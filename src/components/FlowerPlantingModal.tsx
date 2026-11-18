@@ -9,6 +9,7 @@ import {
 } from '../types/game';
 import { getPlantingFootprintForSquad } from '../services/flowerPlantingEngine';
 import { DeGuaCharacter } from './DeGuaCharacter';
+import { WalkingPlayerAvatar } from './WalkingPlayerAvatar';
 
 interface FlowerPlantingModalProps {
   activeVariantId: string;
@@ -410,7 +411,12 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
     <div
       style={{
         position: 'fixed',
-        inset: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: '100lvh',
+        minHeight: '100lvh',
         zIndex: 1050,
         background: '#4EA732',
         display: 'flex',
@@ -507,32 +513,31 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'flex-end', position: 'relative' }}>
-            <div style={{ fontSize: 66, lineHeight: 1, filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.25))' }}>
-              🧑‍🌾
-            </div>
-            <div style={{ marginLeft: -10, marginBottom: 24, transform: 'rotate(8deg)' }}>
+            <WalkingPlayerAvatar height={76} isWalking={isPlanting} />
+            <div style={{ marginLeft: -8, marginBottom: 24, transform: 'rotate(8deg)' }}>
               <GlassPetalJarSvg
                 color={activeVariant.color}
                 petalCount={activePetals}
                 shape={activeVariant.shape}
-                size={40}
+                size={38}
                 uid="hero_hand"
               />
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, marginTop: -22 }}>
-            {squadCreatures.slice(0, 5).map((c) => (
-              <DeGuaCharacter
-                key={c.id}
-                variety={c.variety}
-                decor={c.decor}
-                leafStage={c.leafStage}
-                flowerColor={c.flowerColor}
-                showDecor={c.hasDecor}
-                size={48}
-                isBouncing={isPlanting}
-              />
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, marginTop: -22 }}>
+            {squadCreatures.slice(0, 6).map((c, i) => (
+              <div key={c.id} style={{ transform: `translateY(${i % 2 === 0 ? 0 : -4}px)` }}>
+                <DeGuaCharacter
+                  variety={c.variety}
+                  decor={c.decor}
+                  leafStage={c.leafStage}
+                  flowerColor={c.flowerColor}
+                  showDecor={c.hasDecor}
+                  size={30}
+                  isBouncing={isPlanting}
+                />
+              </div>
             ))}
           </div>
         </div>

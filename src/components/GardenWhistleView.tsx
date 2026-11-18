@@ -1,580 +1,1162 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DECOR_CATALOG,
   DeGuaCreature,
   PetalColor,
-  PETAL_META,
   VARIETY_CATALOG
 } from '../types/game';
 import { DeGuaCharacter } from './DeGuaCharacter';
 
+export interface MeadowFruitDrop {
+  id: string;
+  emoji: string;
+  color: PetalColor;
+  nectarAmount: number;
+  xPct: number;
+  yPct: number;
+}
+
+interface RoamPoint {
+  xPct: number;
+  yPct: number;
+  facingRight: boolean;
+}
+
+interface FloatingFeedback {
+  id: string;
+  text: string;
+  xPct: number;
+  yPct: number;
+}
+
 interface GardenWhistleViewProps {
   creatures: DeGuaCreature[];
+  coins: number;
   nectarJar: Record<PetalColor, number>;
   petalJar: Record<PetalColor, number>;
   selectedNectar: PetalColor;
-  onSelectNectar: (c: PetalColor) => void;
-  onThrowNectarToFeed: () => void;
+  readyFruitExpeditionsCount?: number;
+  onSelectNectar: (color: PetalColor) => void;
+  onThrowNectarToFeed: (color: PetalColor) => void;
   onSwipePluckSingle: (creatureId: string) => void;
   onWhistleGather: () => void;
+  onCollectAllFruits: (meadowFruitsCollected: MeadowFruitDrop[]) => void;
+  onToggleInSquad: (creatureId: string) => void;
+  onToggleFavorite: (creatureId: string) => void;
+  onOpenPlanting: () => void;
+  onOpenPlanter: () => void;
   onCloseGarden: () => void;
 }
 
+const NECTAR_COLOR_MAP: Record<
+  PetalColor,
+  { core: string; glow: string; label: string; badge: string }
+> = {
+  white: {
+    core: '#F8FAFC',
+    glow: 'radial-gradient(circle at 32% 30%, #FFFFFF, #CBD5E1)',
+    label: '白色精華',
+    badge: '#64748B'
+  },
+  yellow: {
+    core: '#FDE047',
+    glow: 'radial-gradient(circle at 32% 30%, #FEF9C3, #EAB308)',
+    label: '黃色精華',
+    badge: '#CA8A04'
+  },
+  red: {
+    core: '#FB7185',
+    glow: 'radial-gradient(circle at 32% 30%, #FFE4E6, #E11D48)',
+    label: '紅色精華',
+    badge: '#E11D48'
+  },
+  blue: {
+    core: '#60A5FA',
+    glow: 'radial-gradient(circle at 32% 30%, #DBEAFE, #2563EB)',
+    label: '藍色精華',
+    badge: '#2563EB'
+  }
+};
+
+const FRUIT_TEMPLATES: Array<{ emoji: string; color: PetalColor; nectarAmount: number }> = [
+  { emoji: '🍓', color: 'red', nectarAmount: 3 },
+  { emoji: '🍋', color: 'yellow', nectarAmount: 3 },
+  { emoji: '🫐', color: 'blue', nectarAmount: 3 },
+  { emoji: '🍏', color: 'white', nectarAmount: 3 },
+  { emoji: '🍑', color: 'red', nectarAmount: 4 }
+];
+
+function createInitialMeadowFruits(): MeadowFruitDrop[] {
+  return [
+    { id: 'mf_init_1', emoji: '🍓', color: 'red', nectarAmount: 3, xPct: 26, yPct: 36 },
+    { id: 'mf_init_2', emoji: '🍋', color: 'yellow', nectarAmount: 3, xPct: 72, yPct: 48 },
+    { id: 'mf_init_3', emoji: '🫐', color: 'blue', nectarAmount: 3, xPct: 42, yPct: 60 }
+  ];
+}
+
+const WhistleIconSvg: React.FC = () => (
+  <svg width="34" height="28" viewBox="0 0 42 32" fill="none">
+    <path
+      d="M8 10H26C31.5 10 35 13.8 35 19C35 24.5 30.8 28 25.5 28C21 28 17.5 25.2 16.5 21H7.5C6.1 21 5 19.9 5 18.5V13C5 11.3 6.3 10 8 10Z"
+      fill="#F8FAFC"
+      stroke="#334155"
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    <circle cx="25.5" cy="19" r="4.5" fill="#94A3B8" stroke="#334155" strokeWidth="1.5" />
+    <path d="M35 15.5C37.5 15.5 39 17.2 39 19.5C39 21.8 37.5 23.5 35 23.5" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" />
+    <rect x="8" y="13" width="6" height="3" rx="1.5" fill="#38BDF8" />
+  </svg>
+);
+
+const FryerPotIconSvg: React.FC = () => (
+  <svg width="30" height="28" viewBox="0 0 36 32" fill="none">
+    <ellipse cx="18" cy="24" rx="13" ry="5" fill="#14B8A6" stroke="#FFFFFF" strokeWidth="1.5" />
+    <ellipse cx="18" cy="19" rx="9" ry="5.5" fill="#78350F" stroke="#FDE68A" strokeWidth="1.4" />
+    <ellipse cx="18" cy="17.5" rx="7" ry="3.2" fill="#92400E" />
+    <path d="M18 16C18 11 21 7 25 6C24 10 21 13 18 16Z" fill="#4ADE80" stroke="#15803D" strokeWidth="1" />
+  </svg>
+);
+
 export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
   creatures,
+  coins,
   nectarJar,
   petalJar,
   selectedNectar,
+  readyFruitExpeditionsCount = 0,
   onSelectNectar,
   onThrowNectarToFeed,
   onSwipePluckSingle,
   onWhistleGather,
+  onCollectAllFruits,
+  onToggleInSquad,
+  onToggleFavorite,
+  onOpenPlanting,
+  onOpenPlanter,
   onCloseGarden
 }) => {
-  const [isSwiping, setIsSwiping] = useState(false);
-  const [nectarThrownAnim, setNectarThrownAnim] = useState(false);
-  const [inspectedCreature, setInspectedCreature] = useState<DeGuaCreature | null>(null);
-  const [floatingPetals, setFloatingPetals] = useState<
-    { id: number; x: number; y: number; color: PetalColor; amount: number }[]
-  >([]);
+  const squadCreatures = useMemo(
+    () => creatures.filter((c) => c.inSquad),
+    [creatures]
+  );
 
-  const squadCreatures = creatures.filter((c) => c.inSquad && c.busyState === 'free');
-  const activeMeta = PETAL_META[selectedNectar];
+  const [roamPositions, setRoamPositions] = useState<Record<string, RoamPoint>>({});
+  const [meadowFruits, setMeadowFruits] = useState<MeadowFruitDrop[]>(createInitialMeadowFruits);
+  const [isGathered, setIsGathered] = useState<boolean>(false);
+  const [whistlePulseCount, setWhistlePulseCount] = useState<number>(0);
+  const [whistleModeLabel, setWhistleModeLabel] = useState<'single' | 'double' | null>(null);
+  const [isNectarDrawerOpen, setIsNectarDrawerOpen] = useState<boolean>(false);
+  const [isCrewSheetOpen, setIsCrewSheetOpen] = useState<boolean>(false);
+  const [crewFilter, setCrewFilter] = useState<'all' | 'squad' | 'favorite'>('all');
+  const [floatingFX, setFloatingFX] = useState<FloatingFeedback[]>([]);
+  const [nectarThrowWave, setNectarThrowWave] = useState<number>(0);
 
-  const handleThrowNectar = () => {
-    setNectarThrownAnim(true);
+  const lastWhistleTapRef = useRef<number>(0);
+  const gatherTimerRef = useRef<number | null>(null);
+  const singleWhistleTimerRef = useRef<number | null>(null);
+  const pluckLockRef = useRef<Record<string, number>>({});
+
+  const meadowBlossoms = useMemo(
+    () => [
+      { x: 10, y: 12, c: '#FFFFFF', s: 0.9 },
+      { x: 24, y: 8, c: '#FACC15', s: 0.85 },
+      { x: 48, y: 11, c: '#93C5FD', s: 0.95 },
+      { x: 74, y: 14, c: '#FB7185', s: 0.9 },
+      { x: 90, y: 9, c: '#FFFFFF', s: 0.85 },
+      { x: 14, y: 26, c: '#C4B5FD', s: 1.0 },
+      { x: 64, y: 24, c: '#FDE047', s: 0.95 },
+      { x: 86, y: 32, c: '#FFFFFF', s: 1.05 },
+      { x: 18, y: 52, c: '#FACC15', s: 1.1 },
+      { x: 80, y: 54, c: '#FB7185', s: 1.05 },
+      { x: 24, y: 74, c: '#FFFFFF', s: 1.15 },
+      { x: 52, y: 72, c: '#93C5FD', s: 1.1 },
+      { x: 76, y: 82, c: '#FDE047', s: 1.2 },
+      { x: 12, y: 86, c: '#FB7185', s: 1.15 }
+    ],
+    []
+  );
+
+  // 初始化＆持續更新每隻地瓜球在花草原上的漫步位置
+  useEffect(() => {
+    setRoamPositions((prev) => {
+      const next = { ...prev };
+      squadCreatures.forEach((c, idx) => {
+        if (!next[c.id]) {
+          const cols = Math.min(4, Math.max(2, squadCreatures.length));
+          const row = Math.floor(idx / cols);
+          const col = idx % cols;
+          next[c.id] = {
+            xPct: 22 + col * (56 / Math.max(1, cols - 1)) + ((idx % 2) * 5 - 2.5),
+            yPct: 28 + row * 15 + (idx % 3) * 3,
+            facingRight: idx % 2 === 0
+          };
+        }
+      });
+      return next;
+    });
+  }, [squadCreatures]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (isGathered) return;
+      setRoamPositions((prev) => {
+        const next: Record<string, RoamPoint> = {};
+        squadCreatures.forEach((c) => {
+          const cur = prev[c.id] || { xPct: 50, yPct: 44, facingRight: true };
+          const dx = (Math.random() - 0.5) * 26;
+          const dy = (Math.random() - 0.5) * 18;
+          const nextX = Math.max(15, Math.min(82, cur.xPct + dx));
+          const nextY = Math.max(24, Math.min(64, cur.yPct + dy));
+          next[c.id] = {
+            xPct: nextX,
+            yPct: nextY,
+            facingRight: nextX >= cur.xPct
+          };
+        });
+        return next;
+      });
+    }, 2300);
+
+    return () => window.clearInterval(timer);
+  }, [squadCreatures, isGathered]);
+
+  const spawnFloatingText = (text: string, xPct: number, yPct: number) => {
+    const id = `fx_${Date.now()}_${Math.random()}`;
+    setFloatingFX((prev) => [...prev, { id, text, xPct, yPct }]);
     window.setTimeout(() => {
-      onThrowNectarToFeed();
-      setNectarThrownAnim(false);
-    }, 280);
+      setFloatingFX((prev) => prev.filter((item) => item.id !== id));
+    }, 1100);
   };
 
-  const triggerPluckOnCreature = (c: DeGuaCreature, clientX?: number, clientY?: number) => {
-    if (c.leafStage !== 'flower') return;
-    const gainedAmount = c.budBonusPending ? 2 : 1;
-    onSwipePluckSingle(c.id);
-    const id = Date.now() + Math.random();
-    setFloatingPetals((prev) => [
-      ...prev,
-      {
-        id,
-        x: clientX || window.innerWidth / 2,
-        y: clientY || window.innerHeight / 2,
-        color: c.flowerColor,
-        amount: gainedAmount
+  // 散開重新逛草原
+  const scatterCreatures = () => {
+    setIsGathered(false);
+    setRoamPositions((prev) => {
+      const next = { ...prev };
+      squadCreatures.forEach((c) => {
+        const targetX = 18 + Math.random() * 64;
+        next[c.id] = {
+          xPct: targetX,
+          yPct: 25 + Math.random() * 38,
+          facingRight: targetX > 50
+        };
+      });
+      return next;
+    });
+  };
+
+  // 吹口哨集合（單擊集合 / 雙擊一次收齊草原與探險果實）
+  const executeGatherAll = () => {
+    setIsGathered(true);
+    setWhistlePulseCount((n) => n + 1);
+    setWhistleModeLabel('single');
+
+    const total = squadCreatures.length;
+    setRoamPositions(() => {
+      const next: Record<string, RoamPoint> = {};
+      squadCreatures.forEach((c, idx) => {
+        const ring = Math.floor(idx / 5);
+        const slot = idx % 5;
+        const angle = ((slot - 2) * 0.42);
+        const xPct = 50 + Math.sin(angle) * (16 + ring * 9);
+        const yPct = 44 + ring * 11 + Math.cos(angle) * 4;
+        next[c.id] = {
+          xPct: Math.max(22, Math.min(78, xPct)),
+          yPct: Math.max(36, Math.min(62, yPct)),
+          facingRight: xPct < 50
+        };
+      });
+      return next;
+    });
+
+    onWhistleGather();
+
+    if (gatherTimerRef.current) window.clearTimeout(gatherTimerRef.current);
+    gatherTimerRef.current = window.setTimeout(() => {
+      setIsGathered(false);
+      setWhistleModeLabel(null);
+    }, 4500);
+
+    if (total > 0) {
+      spawnFloatingText('😗 小隊集合！', 50, 32);
+    }
+  };
+
+  const executeDoubleWhistleCollectFruits = () => {
+    setWhistlePulseCount((n) => n + 1);
+    setWhistleModeLabel('double');
+    executeGatherAll();
+
+    const collected = meadowFruits;
+    if (collected.length > 0 || readyFruitExpeditionsCount > 0) {
+      onCollectAllFruits(collected);
+      collected.forEach((f) => {
+        spawnFloatingText(`${f.emoji} +${f.nectarAmount}`, f.xPct, f.yPct - 4);
+      });
+      setMeadowFruits([]);
+    } else {
+      onCollectAllFruits([]);
+      spawnFloatingText('🍎 果實已全部收齊！', 50, 26);
+    }
+
+    // 2.6 秒後草原會悄悄再開出 1 顆新的野生水果驚喜
+    window.setTimeout(() => {
+      const tpl = FRUIT_TEMPLATES[Math.floor(Math.random() * FRUIT_TEMPLATES.length)];
+      setMeadowFruits((prev) =>
+        prev.length >= 3
+          ? prev
+          : [
+              ...prev,
+              {
+                id: `mf_${Date.now()}`,
+                emoji: tpl.emoji,
+                color: tpl.color,
+                nectarAmount: tpl.nectarAmount,
+                xPct: 24 + Math.random() * 52,
+                yPct: 34 + Math.random() * 26
+              }
+            ]
+      );
+    }, 2600);
+  };
+
+  const handleWhistleButtonTap = () => {
+    const now = Date.now();
+    const diff = now - lastWhistleTapRef.current;
+    if (diff > 0 && diff < 420) {
+      lastWhistleTapRef.current = 0;
+      if (singleWhistleTimerRef.current) {
+        window.clearTimeout(singleWhistleTimerRef.current);
+        singleWhistleTimerRef.current = null;
       }
-    ]);
-    window.setTimeout(() => {
-      setFloatingPetals((prev) => prev.filter((p) => p.id !== id));
-    }, 750);
+      executeDoubleWhistleCollectFruits();
+      return;
+    }
+
+    lastWhistleTapRef.current = now;
+    if (singleWhistleTimerRef.current) window.clearTimeout(singleWhistleTimerRef.current);
+    singleWhistleTimerRef.current = window.setTimeout(() => {
+      singleWhistleTimerRef.current = null;
+      executeGatherAll();
+    }, 240);
   };
+
+  const handleThrowNectar = (targetXPct = 50, targetYPct = 50) => {
+    setNectarThrowWave((n) => n + 1);
+    onThrowNectarToFeed(selectedNectar);
+    spawnFloatingText('💧 餵食花蜜！', targetXPct, Math.max(24, targetYPct - 8));
+
+    // 餵完花蜜有機會掉出 1 顆果實到草原
+    if (meadowFruits.length < 4 && Math.random() < 0.45) {
+      const tpl = FRUIT_TEMPLATES[Math.floor(Math.random() * FRUIT_TEMPLATES.length)];
+      setMeadowFruits((prev) => [
+        ...prev,
+        {
+          id: `mf_drop_${Date.now()}`,
+          emoji: tpl.emoji,
+          color: tpl.color,
+          nectarAmount: tpl.nectarAmount,
+          xPct: Math.max(18, Math.min(82, targetXPct + (Math.random() - 0.5) * 20)),
+          yPct: Math.max(30, Math.min(62, targetYPct + (Math.random() - 0.5) * 14))
+        }
+      ]);
+    }
+  };
+
+  const handleCreatureFlowerSwipe = (c: DeGuaCreature, e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - (pluckLockRef.current[c.id] || 0) < 350) return;
+    pluckLockRef.current[c.id] = now;
+
+    if (c.leafStage === 'flower') {
+      const pos = roamPositions[c.id] || { xPct: 50, yPct: 45, facingRight: true };
+      const bonus = c.budBonusPending ? 2 : 1;
+      onSwipePluckSingle(c.id);
+      spawnFloatingText(`🌸 +${bonus}`, pos.xPct, pos.yPct - 8);
+    } else if (c.leafStage === 'leaf' || c.leafStage === 'bud') {
+      const pos = roamPositions[c.id] || { xPct: 50, yPct: 45, facingRight: true };
+      handleThrowNectar(pos.xPct, pos.yPct);
+    }
+  };
+
+  const handleCollectSingleMeadowFruit = (fruit: MeadowFruitDrop, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onCollectAllFruits([fruit]);
+    setMeadowFruits((prev) => prev.filter((f) => f.id !== fruit.id));
+    spawnFloatingText(`${fruit.emoji} +${fruit.nectarAmount} 花蜜`, fruit.xPct, fruit.yPct - 5);
+  };
+
+  const nectarMeta = NECTAR_COLOR_MAP[selectedNectar];
+  const currentNectarCount = nectarJar[selectedNectar] ?? 0;
+  const totalFruitPending = meadowFruits.length + readyFruitExpeditionsCount;
+
+  const filteredCrew = useMemo(() => {
+    return [...creatures]
+      .sort((a, b) => {
+        if (Boolean(b.isFavorite) !== Boolean(a.isFavorite)) return b.isFavorite ? 1 : -1;
+        if (b.inSquad !== a.inSquad) return b.inSquad ? 1 : -1;
+        return b.friendship - a.friendship;
+      })
+      .filter((c) => {
+        if (crewFilter === 'squad') return c.inSquad;
+        if (crewFilter === 'favorite') return Boolean(c.isFavorite);
+        return true;
+      });
+  }, [creatures, crewFilter]);
 
   return (
     <div
-      onPointerDown={() => setIsSwiping(true)}
-      onPointerUp={() => setIsSwiping(false)}
-      onPointerCancel={() => setIsSwiping(false)}
       style={{
         position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        background: 'linear-gradient(180deg, #BAE6FD 0%, #86EFAC 28%, #4ADE80 65%, #22C55E 100%)',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: '100lvh',
+        minHeight: '100lvh',
+        zIndex: 1060,
+        background:
+          'linear-gradient(180deg, #4B9B36 0%, #5DB845 24%, #6AC851 56%, #53AD3B 84%, #408C2B 100%)',
+        overflow: 'hidden',
         userSelect: 'none',
-        touchAction: 'none',
-        overflow: 'hidden'
+        WebkitUserSelect: 'none',
+        touchAction: 'none'
       }}
     >
-      {/* 頂部導覽列：左上返回主畫面按鈕 ＋ 花瓣與花蜜數量膠囊 */}
+      {/* 陽光柔焦與草地背景裝飾花朵 */}
       <div
         style={{
-          padding: 'max(14px, env(safe-area-inset-top)) 16px 8px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 10,
-          zIndex: 20
+          position: 'absolute',
+          inset: 0,
+          background:
+            'radial-gradient(circle at 50% 34%, rgba(254,249,195,0.34) 0%, rgba(254,249,195,0) 62%)',
+          pointerEvents: 'none'
         }}
-      >
-        <button
-          onClick={onCloseGarden}
-          style={{
-            border: '2px solid #FFFFFF',
-            background: '#1E293B',
-            color: '#FFFFFF',
-            borderRadius: 99,
-            padding: '8px 16px',
-            fontSize: 13,
-            fontWeight: 900,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.25)'
-          }}
-        >
-          <span>←</span>
-          <span>返回主畫面</span>
-        </button>
+      />
 
+      {meadowBlossoms.map((b, i) => (
         <div
+          key={i}
           style={{
-            background: 'rgba(255, 255, 255, 0.94)',
-            borderRadius: 99,
-            padding: '6px 14px',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ fontSize: 18 }}>{activeMeta.emoji}</span>
-            <div>
-              <div style={{ fontSize: 9, color: '#64748B', fontWeight: 800 }}>{activeMeta.name}</div>
-              <div style={{ fontSize: 14, fontWeight: 900, color: '#0F172A' }}>
-                {petalJar[selectedNectar]} <span style={{ fontSize: 10, color: '#94A3B8' }}>/300</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ width: 1, height: 22, background: '#E2E8F0' }} />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                background: activeMeta.hex === '#FFFFFF' ? '#F1F5F9' : activeMeta.hex,
-                border: '2px solid #CBD5E1',
-                display: 'inline-block'
-              }}
-            />
-            <div>
-              <div style={{ fontSize: 9, color: '#64748B', fontWeight: 800 }}>{activeMeta.nectarName}</div>
-              <div style={{ fontSize: 14, fontWeight: 900, color: '#0F172A' }}>
-                {nectarJar[selectedNectar]}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 中央陽光草地：地瓜球小隊互動區（保持皮克敏乾淨草原，不放多餘教學長文字） */}
-      <div
-        style={{
-          flex: 1,
-          position: 'relative',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignContent: 'center',
-          justifyContent: 'center',
-          gap: 10,
-          padding: '8px 16px',
-          zIndex: 10,
-          overflowY: 'auto'
-        }}
-      >
-        {squadCreatures.map((c) => {
-          const hearts = Math.floor(c.friendship / 100);
-          return (
-            <div
-              key={c.id}
-              onPointerEnter={(e) => {
-                if (isSwiping && c.leafStage === 'flower') {
-                  triggerPluckOnCreature(c, e.clientX, e.clientY);
-                }
-              }}
-              onClick={(e) => {
-                if (c.leafStage === 'flower') {
-                  triggerPluckOnCreature(c, e.clientX, e.clientY);
-                } else {
-                  setInspectedCreature(c);
-                }
-              }}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                position: 'relative',
-                padding: 4
-              }}
-            >
-              <DeGuaCharacter
-                variety={c.variety}
-                decor={c.decor}
-                leafStage={c.leafStage}
-                flowerColor={c.flowerColor}
-                showDecor={c.hasDecor}
-                size={92}
-              />
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setInspectedCreature(c);
-                }}
-                style={{
-                  background: 'rgba(255,255,255,0.88)',
-                  borderRadius: 99,
-                  padding: '2px 8px',
-                  fontSize: 10,
-                  fontWeight: 900,
-                  color: '#1F2937',
-                  marginTop: -4,
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4
-                }}
-              >
-                <span>{'❤️'.repeat(hearts)}{'🤍'.repeat(Math.max(0, 4 - hearts))} {c.name}</span>
-                {(c.feedCount ?? 0) > 0 && c.leafStage !== 'bare' && (
-                  <span
-                    style={{
-                      background: (c.feedCount ?? 0) >= 5 ? '#FEF3C7' : '#E2E8F0',
-                      color: (c.feedCount ?? 0) >= 5 ? '#B45309' : '#475569',
-                      borderRadius: 99,
-                      padding: '0 5px',
-                      fontSize: 9.5,
-                      fontWeight: 900
-                    }}
-                  >
-                    {c.feedCount}/6
-                  </span>
-                )}
-                {c.leafStage === 'bare' && (
-                  <span
-                    style={{
-                      background: '#FEE2E2',
-                      color: '#B91C1C',
-                      borderRadius: 99,
-                      padding: '0 5px',
-                      fontSize: 9.5,
-                      fontWeight: 900
-                    }}
-                  >
-                    6/6
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-
-        {nectarThrownAnim && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '35%',
-              left: '50%',
-              transform: 'translate(-50%, -50%) scale(1.4)',
-              width: 54,
-              height: 54,
-              borderRadius: '50%',
-              background: activeMeta.hex,
-              boxShadow: `0 0 28px ${activeMeta.hex}`,
-              pointerEvents: 'none'
-            }}
-          />
-        )}
-      </div>
-
-      {/* 採收花瓣粒子 */}
-      {floatingPetals.map((fp) => (
-        <div
-          key={fp.id}
-          style={{
-            position: 'fixed',
-            left: fp.x - 20,
-            top: fp.y - 30,
-            fontSize: 22,
-            fontWeight: 900,
-            color: '#FFF',
-            textShadow: '0 2px 6px rgba(0,0,0,0.45)',
+            position: 'absolute',
+            left: `${b.x}%`,
+            top: `${b.y}%`,
+            transform: `translate(-50%, -50%) scale(${b.s})`,
             pointerEvents: 'none',
-            zIndex: 1200,
-            animation: 'floatUpPetal 0.75s ease-out forwards'
+            opacity: 0.9
           }}
         >
-          {PETAL_META[fp.color].emoji} +{fp.amount}
+          <svg width="24" height="24" viewBox="0 0 26 26">
+            <circle cx="13" cy="6" r="4.5" fill={b.c} />
+            <circle cx="19" cy="11" r="4.5" fill={b.c} />
+            <circle cx="17" cy="18" r="4.5" fill={b.c} />
+            <circle cx="9" cy="18" r="4.5" fill={b.c} />
+            <circle cx="7" cy="11" r="4.5" fill={b.c} />
+            <circle cx="13" cy="13" r="3.2" fill="#FACC15" />
+          </svg>
         </div>
       ))}
 
-      {/* 底部花蜜拋投與哨子控制區 */}
+      {/* 頂部左右懸浮玻璃膠囊（完全對照皮克敏：左上小型按鈕、右上金幣膠囊、移除冗餘返回主畫面按鈕） */}
       <div
         style={{
-          padding: '10px 18px max(22px, env(safe-area-inset-bottom))',
+          position: 'absolute',
+          top: 'max(14px, env(safe-area-inset-top))',
+          left: 16,
+          right: 16,
+          zIndex: 30,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          pointerEvents: 'none'
+        }}
+      >
+        <button
+          onClick={scatterCreatures}
+          style={{
+            pointerEvents: 'auto',
+            width: 42,
+            height: 42,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.65)',
+            background: 'rgba(15, 23, 42, 0.28)',
+            backdropFilter: 'blur(8px)',
+            color: '#FFFFFF',
+            fontSize: 18,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.18)'
+          }}
+          title="讓地瓜球分散自由散步"
+        >
+          🌿
+        </button>
+
+        {totalFruitPending > 0 && (
+          <div
+            style={{
+              background: 'rgba(15, 23, 42, 0.34)',
+              backdropFilter: 'blur(8px)',
+              color: '#FEF9C3',
+              padding: '5px 12px',
+              borderRadius: 99,
+              fontSize: 11.5,
+              fontWeight: 900,
+              border: '1px solid rgba(255,255,255,0.35)',
+              boxShadow: '0 4px 10px rgba(0,0,0,0.15)'
+            }}
+          >
+            🍎 草原有 {totalFruitPending} 顆果實，點兩下口哨一次收！
+          </div>
+        )}
+
+        <div
+          style={{
+            pointerEvents: 'auto',
+            background: 'rgba(15, 23, 42, 0.34)',
+            backdropFilter: 'blur(8px)',
+            border: '1.5px solid rgba(255,255,255,0.5)',
+            borderRadius: 99,
+            padding: '6px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            color: '#FFFFFF',
+            fontWeight: 900,
+            fontSize: 15,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.18)'
+          }}
+        >
+          <span>🪙</span>
+          <span>{coins}</span>
+        </div>
+      </div>
+
+      {/* 口哨集合波紋動畫 */}
+      {whistlePulseCount > 0 && (
+        <div
+          key={whistlePulseCount}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '48%',
+            width: 140,
+            height: 140,
+            marginLeft: -70,
+            marginTop: -70,
+            borderRadius: '50%',
+            border:
+              whistleModeLabel === 'double'
+                ? '4px solid rgba(253, 224, 71, 0.85)'
+                : '4px solid rgba(255, 255, 255, 0.78)',
+            boxShadow:
+              whistleModeLabel === 'double'
+                ? '0 0 28px rgba(253, 224, 71, 0.7)'
+                : '0 0 24px rgba(255, 255, 255, 0.6)',
+            animation: 'deguaWhistleRing 0.75s ease-out forwards',
+            pointerEvents: 'none',
+            zIndex: 5
+          }}
+        />
+      )}
+
+      {/* 自由散步的隊伍地瓜球（每一隻都會在花草原上走，滑花瓣可採收） */}
+      {squadCreatures.map((c) => {
+        const pt = roamPositions[c.id] || { xPct: 50, yPct: 45, facingRight: true };
+        const canPluck = c.leafStage === 'flower';
+        return (
+          <div
+            key={c.id}
+            onClick={(e) => handleCreatureFlowerSwipe(c, e)}
+            onTouchMove={(e) => {
+              if (canPluck) handleCreatureFlowerSwipe(c, e);
+            }}
+            style={{
+              position: 'absolute',
+              left: `${pt.xPct}%`,
+              top: `${pt.yPct}%`,
+              transform: `translate(-50%, -50%) scaleX(${pt.facingRight ? 1 : -1})`,
+              transition: isGathered
+                ? 'left 0.45s cubic-bezier(0.22, 1, 0.36, 1), top 0.45s cubic-bezier(0.22, 1, 0.36, 1)'
+                : 'left 2.1s ease-in-out, top 2.1s ease-in-out',
+              zIndex: Math.round(pt.yPct) + 10,
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center'
+            }}
+          >
+            {c.isFavorite && (
+              <div
+                style={{
+                  transform: `scaleX(${pt.facingRight ? 1 : -1})`,
+                  fontSize: 12,
+                  marginBottom: -4,
+                  filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))'
+                }}
+              >
+                ⭐
+              </div>
+            )}
+            <DeGuaCharacter
+              variety={c.variety}
+              decor={c.decor}
+              leafStage={c.leafStage}
+              flowerColor={c.flowerColor}
+              showDecor={c.hasDecor}
+              size={60}
+              isBouncing={!isGathered || nectarThrowWave > 0}
+            />
+            {canPluck && (
+              <div
+                style={{
+                  transform: `scaleX(${pt.facingRight ? 1 : -1})`,
+                  marginTop: -6,
+                  background: 'rgba(255,255,255,0.9)',
+                  color: '#059669',
+                  fontSize: 10,
+                  fontWeight: 900,
+                  padding: '1px 6px',
+                  borderRadius: 99,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.18)'
+                }}
+              >
+                滑動採瓣
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* 花草原上等待採收的小果實 */}
+      {meadowFruits.map((fruit) => (
+        <button
+          key={fruit.id}
+          onClick={(e) => handleCollectSingleMeadowFruit(fruit, e)}
+          style={{
+            position: 'absolute',
+            left: `${fruit.xPct}%`,
+            top: `${fruit.yPct}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: Math.round(fruit.yPct) + 15,
+            border: '2px solid rgba(255,255,255,0.85)',
+            background: 'radial-gradient(circle at 30% 30%, rgba(254,249,195,0.96), rgba(250,204,21,0.88))',
+            width: 44,
+            height: 44,
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 24,
+            cursor: 'pointer',
+            boxShadow: '0 6px 16px rgba(0,0,0,0.24), 0 0 14px rgba(254,240,138,0.8)'
+          }}
+          className="degua-bounce"
+          title="點擊或雙擊口哨一次收取果實花蜜"
+        >
+          {fruit.emoji}
+        </button>
+      ))}
+
+      {/* 飄浮回饋文字 */}
+      {floatingFX.map((fx) => (
+        <div
+          key={fx.id}
+          style={{
+            position: 'absolute',
+            left: `${fx.xPct}%`,
+            top: `${fx.yPct}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 95,
+            background: 'rgba(255,255,255,0.94)',
+            color: '#0F172A',
+            padding: '4px 10px',
+            borderRadius: 99,
+            fontSize: 12,
+            fontWeight: 900,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            pointerEvents: 'none'
+          }}
+        >
+          {fx.text}
+        </div>
+      ))}
+
+      {/* ==================== 底部操作列（完全對照圖 5 皮克敏花園） ==================== */}
+      {/* 左下角：圓形 ✕ 返回主畫面 */}
+      <button
+        onClick={onCloseGarden}
+        style={{
+          position: 'absolute',
+          left: 16,
+          bottom: 'max(18px, env(safe-area-inset-bottom))',
+          zIndex: 40,
+          width: 48,
+          height: 48,
+          borderRadius: '50%',
+          border: '2px solid rgba(255,255,255,0.7)',
+          background: 'rgba(15, 23, 42, 0.34)',
+          backdropFilter: 'blur(8px)',
+          color: '#FFFFFF',
+          fontSize: 20,
+          fontWeight: 900,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.22)'
+        }}
+        title="關閉花園"
+      >
+        ✕
+      </button>
+
+      {/* 中央下方：精華花蜜玻璃球（點擊投餵 / 點下方角標切換四色花蜜） */}
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          bottom: 'max(16px, env(safe-area-inset-bottom))',
+          zIndex: 40,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 12,
-          zIndex: 20,
-          background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.28) 100%)'
+          gap: 10
         }}
       >
-        {/* 中央晶瑩花蜜球 */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <div
-            onClick={handleThrowNectar}
-            style={{
-              width: 70,
-              height: 70,
-              borderRadius: '50%',
-              background: `radial-gradient(circle at 32% 30%, #FFFFFF 0%, ${activeMeta.hex === '#FFFFFF' ? '#E2E8F0' : activeMeta.hex} 65%, rgba(0,0,0,0.2) 100%)`,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.32), inset 0 4px 10px rgba(255,255,255,0.8)',
-              border: '3px solid rgba(255,255,255,0.95)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              position: 'relative',
-              transform: nectarThrownAnim ? 'translateY(-90px) scale(0.6)' : 'scale(1)',
-              transition: 'transform 0.25s ease-out'
-            }}
-          >
-            <span
-              style={{
-                position: 'absolute',
-                bottom: -6,
-                background: '#0F172A',
-                color: '#FFF',
-                fontSize: 11,
-                fontWeight: 900,
-                padding: '1px 8px',
-                borderRadius: 99
-              }}
-            >
-              x{nectarJar[selectedNectar]}
-            </span>
-          </div>
-          <span style={{ fontSize: 11, fontWeight: 900, color: '#FFFFFF', textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-            {activeMeta.nectarName}
-          </span>
-        </div>
-
-        {/* 下方控制列：關閉返回鈕 + 4色花蜜切換 + 吹哨子集合 */}
-        <div
-          style={{
-            width: '100%',
-            maxWidth: 440,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10
-          }}
-        >
-          <button
-            onClick={onCloseGarden}
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: '50%',
-              border: '3px solid #FFFFFF',
-              background: '#1E293B',
-              color: '#FFFFFF',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
-              fontSize: 20,
-              fontWeight: 900,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-            title="關閉花園返回主畫面"
-          >
-            ✕
-          </button>
-
+        {isNectarDrawerOpen && (
           <div
             style={{
-              background: 'rgba(255,255,255,0.94)',
+              background: 'rgba(255,255,255,0.95)',
               borderRadius: 99,
               padding: '6px 12px',
               display: 'flex',
+              alignItems: 'center',
               gap: 10,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+              boxShadow: '0 8px 24px rgba(0,0,0,0.24)'
             }}
           >
-            {(['white', 'yellow', 'red', 'blue'] as PetalColor[]).map((color) => {
-              const m = PETAL_META[color];
-              const isSel = selectedNectar === color;
+            {(['white', 'yellow', 'red', 'blue'] as PetalColor[]).map((c) => {
+              const active = c === selectedNectar;
               return (
                 <button
-                  key={color}
-                  onClick={() => onSelectNectar(color)}
+                  key={c}
+                  onClick={() => {
+                    onSelectNectar(c);
+                    setIsNectarDrawerOpen(false);
+                  }}
                   style={{
-                    width: 38,
-                    height: 38,
+                    width: 40,
+                    height: 40,
                     borderRadius: '50%',
-                    border: isSel ? '3px solid #0F172A' : '2px solid #CBD5E1',
-                    background: m.hex === '#FFFFFF' ? '#F8FAFC' : m.hex,
-                    cursor: 'pointer',
-                    position: 'relative',
-                    transform: isSel ? 'scale(1.12)' : 'scale(1)'
+                    border: active ? '3px solid #0F172A' : '1.5px solid #CBD5E1',
+                    background: NECTAR_COLOR_MAP[c].glow,
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    justifyContent: 'center',
+                    paddingBottom: 2,
+                    cursor: 'pointer'
                   }}
                 >
                   <span
                     style={{
-                      position: 'absolute',
-                      bottom: -4,
-                      right: -4,
                       background: '#0F172A',
                       color: '#FFF',
-                      fontSize: 9,
+                      fontSize: 9.5,
                       fontWeight: 900,
-                      padding: '0 4px',
+                      padding: '1px 5px',
                       borderRadius: 99
                     }}
                   >
-                    {nectarJar[color]}
+                    {nectarJar[c] ?? 0}
                   </span>
                 </button>
               );
             })}
           </div>
+        )}
 
+        <div style={{ position: 'relative' }}>
           <button
-            onClick={onWhistleGather}
+            onClick={() => handleThrowNectar(50, 46)}
             style={{
-              width: 54,
-              height: 54,
+              width: 78,
+              height: 78,
               borderRadius: '50%',
-              border: '3px solid #FFFFFF',
-              background: 'linear-gradient(135deg, #10B981, #059669)',
-              color: '#FFF',
-              boxShadow: '0 6px 16px rgba(5,150,105,0.45)',
-              fontSize: 22,
+              border: '3px solid rgba(255,255,255,0.92)',
+              background: nectarMeta.glow,
+              boxShadow:
+                '0 10px 24px rgba(0,0,0,0.26), inset 0 4px 12px rgba(255,255,255,0.75)',
               cursor: 'pointer',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center'
             }}
-            title="吹口哨集合！"
+            title={`點擊投餵 ${nectarMeta.label}`}
           >
-            😗
+            <span style={{ fontSize: 11, fontWeight: 900, color: '#1E293B', opacity: 0.72 }}>
+              投餵
+            </span>
+          </button>
+
+          {/* 切換花蜜種類膠囊角標 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsNectarDrawerOpen((v) => !v);
+            }}
+            style={{
+              position: 'absolute',
+              right: -10,
+              bottom: -2,
+              background: 'rgba(15, 23, 42, 0.78)',
+              color: '#FFFFFF',
+              border: '2px solid rgba(255,255,255,0.85)',
+              borderRadius: 99,
+              padding: '2px 9px',
+              fontSize: 12,
+              fontWeight: 900,
+              cursor: 'pointer',
+              boxShadow: '0 3px 8px rgba(0,0,0,0.25)'
+            }}
+            title="切換花蜜顏色"
+          >
+            {currentNectarCount} ▾
           </button>
         </div>
       </div>
 
-      {/* 單隻地瓜球詳細檔案卡 */}
-      {inspectedCreature && (
-        <div
-          onClick={() => setInspectedCreature(null)}
+      {/* 右側垂直玻璃圓鈕群：切換隊伍(含最愛篩選) ｜ 🌼 種花 ｜ 🍳 油鍋 ｜ 😗 口哨（雙擊收水果） */}
+      <div
+        style={{
+          position: 'absolute',
+          right: 16,
+          bottom: 'max(18px, env(safe-area-inset-bottom))',
+          zIndex: 40,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 10
+        }}
+      >
+        {/* 切換隊伍 / 地瓜球總數與最愛管理 */}
+        <button
+          onClick={() => setIsCrewSheetOpen(true)}
           style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            zIndex: 1100,
+            position: 'relative',
+            width: 50,
+            height: 50,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.85)',
+            background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.88), rgba(16,185,129,0.9))',
+            cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 20
+            boxShadow: '0 6px 14px rgba(0,0,0,0.24)'
+          }}
+          title="切換隊伍 / 標記最愛地瓜球"
+        >
+          <DeGuaCharacter
+            variety="red"
+            decor="roadside"
+            leafStage="leaf"
+            flowerColor="white"
+            showDecor={false}
+            size={30}
+          />
+          <span
+            style={{
+              position: 'absolute',
+              bottom: -4,
+              right: -6,
+              background: 'rgba(15, 23, 42, 0.8)',
+              color: '#FFFFFF',
+              fontSize: 10,
+              fontWeight: 900,
+              padding: '1px 6px',
+              borderRadius: 99,
+              border: '1.5px solid #FFFFFF'
+            }}
+          >
+            {creatures.length}
+          </span>
+        </button>
+
+        {/* 🌼 開啟種花 */}
+        <button
+          onClick={onOpenPlanting}
+          style={{
+            width: 50,
+            height: 50,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.85)',
+            background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.88), rgba(16,185,129,0.9))',
+            fontSize: 22,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 6px 14px rgba(0,0,0,0.24)'
+          }}
+          title="開啟種花花瓣庫"
+        >
+          🌼
+        </button>
+
+        {/* 🍳 前往油鍋 */}
+        <button
+          onClick={onOpenPlanter}
+          style={{
+            width: 50,
+            height: 50,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.85)',
+            background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.88), rgba(16,185,129,0.9))',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 6px 14px rgba(0,0,0,0.24)'
+          }}
+          title="查看油鍋瓜糰"
+        >
+          <FryerPotIconSvg />
+        </button>
+
+        {/* 😗 吹口哨（點一下集合 / 點兩下一次收所有果實） */}
+        <button
+          onClick={handleWhistleButtonTap}
+          style={{
+            position: 'relative',
+            width: 62,
+            height: 62,
+            borderRadius: '50%',
+            border: '3px solid rgba(255,255,255,0.92)',
+            background:
+              'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.95), rgba(5,150,105,0.96))',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow:
+              '0 8px 20px rgba(0,0,0,0.3), inset 0 3px 8px rgba(255,255,255,0.7)'
+          }}
+          title="點一下集合，點兩下一次收果實！"
+        >
+          <WhistleIconSvg />
+          {petalJar && totalFruitPending > 0 && (
+            <span
+              style={{
+                position: 'absolute',
+                top: -4,
+                right: -4,
+                background: '#F59E0B',
+                color: '#FFFFFF',
+                fontSize: 10.5,
+                fontWeight: 900,
+                padding: '1px 6px',
+                borderRadius: 99,
+                border: '2px solid #FFFFFF'
+              }}
+            >
+              ×2收
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ==================== 切換隊伍 & 最愛地瓜球(⭐可標記)上拉抽屜 ==================== */}
+      {isCrewSheetOpen && (
+        <div
+          onClick={() => setIsCrewSheetOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            background: 'rgba(15,23,42,0.45)',
+            display: 'flex',
+            alignItems: 'flex-end'
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#FFFFFF',
-              borderRadius: 28,
-              padding: '22px 20px',
               width: '100%',
-              maxWidth: 350,
-              textAlign: 'center',
-              boxShadow: '0 16px 40px rgba(0,0,0,0.35)'
+              maxHeight: '78lvh',
+              background: '#FFFFFF',
+              borderRadius: '26px 26px 0 0',
+              padding: '14px 16px max(18px, env(safe-area-inset-bottom))',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              boxShadow: '0 -8px 28px rgba(0,0,0,0.22)'
             }}
           >
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#64748B' }}>
-              {VARIETY_CATALOG[inspectedCreature.variety].name}
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: '#0F172A', marginTop: 2 }}>
-              {inspectedCreature.name}
+            <div style={{ width: 42, height: 5, borderRadius: 99, background: '#CBD5E1', margin: '0 auto' }} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 900, color: '#0F172A' }}>
+                  🍠 切換散步隊伍 ＆ 最愛地瓜球
+                </div>
+                <div style={{ fontSize: 11.5, color: '#64748B', fontWeight: 700, marginTop: 2 }}>
+                  目前隊伍 {squadCreatures.length} / 10 隻・點右上角 ⭐ 可標記最愛
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCrewSheetOpen(false)}
+                style={{
+                  border: 'none',
+                  background: '#F1F5F9',
+                  width: 34,
+                  height: 34,
+                  borderRadius: '50%',
+                  fontWeight: 900,
+                  cursor: 'pointer'
+                }}
+              >
+                ✕
+              </button>
             </div>
 
-            <div style={{ margin: '10px 0', display: 'flex', justifyContent: 'center' }}>
-              <DeGuaCharacter
-                variety={inspectedCreature.variety}
-                decor={inspectedCreature.decor}
-                leafStage={inspectedCreature.leafStage}
-                flowerColor={inspectedCreature.flowerColor}
-                showDecor={inspectedCreature.hasDecor}
-                size={125}
-              />
-            </div>
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#64748B', marginBottom: 4 }}>
-                友好度 ({Math.floor(inspectedCreature.friendship / 100)} / 4 顆心)
-              </div>
-              <div style={{ fontSize: 22, letterSpacing: 4 }}>
-                {'❤️'.repeat(Math.floor(inspectedCreature.friendship / 100))}
-                {'🤍'.repeat(Math.max(0, 4 - Math.floor(inspectedCreature.friendship / 100)))}
-              </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(
+                [
+                  { id: 'all', label: `全部 (${creatures.length})` },
+                  { id: 'squad', label: `隊伍中 (${squadCreatures.length})` },
+                  {
+                    id: 'favorite',
+                    label: `⭐ 最愛 (${creatures.filter((c) => c.isFavorite).length})`
+                  }
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setCrewFilter(tab.id)}
+                  style={{
+                    border: 'none',
+                    borderRadius: 99,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    background: crewFilter === tab.id ? '#10B981' : '#F1F5F9',
+                    color: crewFilter === tab.id ? '#FFFFFF' : '#475569'
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
             <div
               style={{
-                background: '#F8FAFC',
-                borderRadius: 16,
-                padding: '10px 12px',
-                fontSize: 12,
-                color: '#334155',
-                textAlign: 'left',
-                lineHeight: 1.6,
-                marginBottom: 14
+                overflowY: 'auto',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 10,
+                paddingBottom: 6
               }}
             >
-              <div>
-                🌱 <strong>頭頂狀態：</strong>
-                {inspectedCreature.leafStage === 'leaf'
-                  ? '葉子'
-                  : inspectedCreature.leafStage === 'bud'
-                    ? '花苞（餵精華採收 ×2）'
-                    : inspectedCreature.leafStage === 'flower'
-                      ? `開花中（${PETAL_META[inspectedCreature.flowerColor].name}）`
-                      : `光禿禿（${inspectedCreature.bareWalkSteps ?? 0} / 2,000 步）`}
-              </div>
-              <div>
-                🍯 <strong>餵食進度：</strong>{inspectedCreature.feedCount ?? 0} / 6
-              </div>
-              <div>📍 <strong>發現地點：</strong>{inspectedCreature.placeName}</div>
-              <div>
-                🏷️ <strong>場所分類：</strong>
-                {DECOR_CATALOG[inspectedCreature.decor].icon}{' '}
-                {DECOR_CATALOG[inspectedCreature.decor].placeCategory}
-              </div>
-              <div>
-                🎁 <strong>飾品狀態：</strong>
-                {inspectedCreature.hasDecor
-                  ? `已穿戴【${DECOR_CATALOG[inspectedCreature.decor].name}】`
-                  : inspectedCreature.friendship >= 400
-                    ? '🎉 已滿 4 顆心'
-                    : '滿 4 顆心解鎖飾品'}
-              </div>
-            </div>
+              {filteredCrew.map((c) => (
+                <div
+                  key={c.id}
+                  style={{
+                    position: 'relative',
+                    background: c.inSquad ? '#ECFDF5' : '#F8FAFC',
+                    border: c.inSquad ? '2px solid #10B981' : '1.5px solid #E2E8F0',
+                    borderRadius: 16,
+                    padding: '10px 6px 8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 4
+                  }}
+                >
+                  <button
+                    onClick={() => onToggleFavorite(c.id)}
+                    style={{
+                      position: 'absolute',
+                      top: 6,
+                      right: 6,
+                      border: 'none',
+                      background: 'rgba(255,255,255,0.85)',
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    title="標記最愛地瓜球"
+                  >
+                    {c.isFavorite ? '⭐' : '☆'}
+                  </button>
 
-            <button
-              onClick={() => setInspectedCreature(null)}
-              style={{
-                width: '100%',
-                border: 'none',
-                background: '#10B981',
-                color: '#FFF',
-                fontWeight: 900,
-                fontSize: 14,
-                padding: '12px',
-                borderRadius: 99,
-                cursor: 'pointer'
-              }}
-            >
-              關閉
-            </button>
+                  <div onClick={() => onToggleInSquad(c.id)} style={{ cursor: 'pointer' }}>
+                    <DeGuaCharacter
+                      variety={c.variety}
+                      decor={c.decor}
+                      leafStage={c.leafStage}
+                      flowerColor={c.flowerColor}
+                      showDecor={c.hasDecor}
+                      size={52}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 900,
+                      color: '#0F172A',
+                      maxWidth: '100%',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {c.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#64748B', fontWeight: 700 }}>
+                    {DECOR_CATALOG[c.decor]?.icon || '🍠'} {VARIETY_CATALOG[c.variety].name}
+                  </div>
+                  <button
+                    onClick={() => onToggleInSquad(c.id)}
+                    style={{
+                      width: '100%',
+                      border: 'none',
+                      borderRadius: 99,
+                      padding: '4px 6px',
+                      marginTop: 2,
+                      fontSize: 10.5,
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      background: c.inSquad ? '#10B981' : '#E2E8F0',
+                      color: c.inSquad ? '#FFFFFF' : '#334155'
+                    }}
+                  >
+                    {c.inSquad ? '✓ 隊伍中' : '加入隊伍'}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes deguaWhistleRing {
+          0% { transform: scale(0.4); opacity: 0.95; }
+          100% { transform: scale(2.8); opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 };

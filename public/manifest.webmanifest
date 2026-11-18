@@ -1,0 +1,10 @@
+{
+  "name": "地瓜球 DeGuaChill",
+  "short_name": "地瓜球",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#58B044",
+  "theme_color": "#2563EB"
+}

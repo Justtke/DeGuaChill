@@ -549,7 +549,10 @@ export const DailyLifelogModal: React.FC<{
 /* ==================== 5. 🛍️ 商店 (Shop Modal) ==================== */
 export const ShopModal: React.FC<{
   coins: number;
-  onBuyItem: (cost: number, rewardType: 'petals' | 'nectar' | 'radar' | 'seedling') => void;
+  onBuyItem: (
+    cost: number,
+    rewardType: 'petals' | 'nectar' | 'radar' | 'seedling' | 'extra_slot_std' | 'extra_slot_fast25'
+  ) => void;
   onClose: () => void;
 }> = ({ coins, onBuyItem, onClose }) => {
   const shopItems = [
@@ -570,18 +573,34 @@ export const ShopModal: React.FC<{
       type: 'nectar' as const
     },
     {
+      id: 'extra_slot_std',
+      icon: '🔵',
+      name: '青藍額外欄位 ×1',
+      desc: '增加 1 口油鍋欄位同時炸瓜糰，撈起地瓜球後消耗',
+      cost: 60,
+      type: 'extra_slot_std' as const
+    },
+    {
+      id: 'extra_slot_fast25',
+      icon: '🟡⚡',
+      name: '金黃加速 +25% 額外欄位 ×1',
+      desc: '增加 1 口 +25% 成長步數加速的黃金油鍋，撈起後消耗',
+      cost: 100,
+      type: 'extra_slot_fast25' as const
+    },
+    {
       id: 'radar',
       icon: '📡',
       name: '立即發射超級探測器',
-      desc: '立即掃描周邊店家並獲得水果與花苗探險',
+      desc: '立即掃描周邊店家並獲得水果與瓜糰探險',
       cost: 0,
       type: 'radar' as const
     },
     {
       id: 'seedling',
-      icon: '🪴✨',
-      name: '黃金特殊飾品巨大花苗',
-      desc: '直接獲得 1 顆自帶飾品的特殊花苗',
+      icon: '🍠✨',
+      name: '黃金特殊飾品巨大瓜糰',
+      desc: '直接獲得 1 顆自帶飾品的特殊瓜糰',
       cost: 80,
       type: 'seedling' as const
     }

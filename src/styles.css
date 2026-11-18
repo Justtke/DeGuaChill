@@ -7,11 +7,11 @@ html, body, #root {
   margin: 0;
   padding: 0;
   width: 100%;
-  height: 100%;
+  min-height: 100vh;
+  min-height: 100lvh;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "PingFang TC", "Microsoft JhengHei", sans-serif;
-  background: #ECFDF5;
+  background: #2563EB;
   color: #1E293B;
-  overflow: hidden;
 }
 
 /*
@@ -71,6 +71,12 @@ html, body, #root {
   animation: walkerLegRight 0.65s ease-in-out infinite;
 }
 
+.pikmin-walker-static .pikmin-walker-body,
+.pikmin-walker-static .pikmin-walker-leg-l,
+.pikmin-walker-static .pikmin-walker-leg-r {
+  animation: none !important;
+}
+
 @keyframes deguaBounce {
   0%, 100% {
     transform: translateY(0px) scale(1, 1);
@@ -123,7 +129,8 @@ html, body, #root {
 
 .pikmin-app-shell {
   width: 100%;
-  height: 100%;
+  min-height: 100vh;
+  min-height: 100lvh;
   max-width: 500px;
   margin: 0 auto;
   display: flex;
@@ -131,7 +138,8 @@ html, body, #root {
   position: relative;
   background: #F8FAFC;
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.15);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* ==================== 元素蘑菇詳情特寫動畫（點進去時的專屬包圍特效；水晶菇維持靜止無動畫） ==================== */

@@ -75,9 +75,22 @@ export interface DeGuaCreature {
   bareWalkSteps?: number; // 光禿禿後行走步數（約 2,000 步長回葉子）
   squadWalkSteps?: number; // 隊伍中葉子累積步數（約 1,700~2,000 步變花苞）
   budBonusPending?: boolean; // 由「花苞」開花，採收可得雙倍花瓣 (+2)
+  isFavorite?: boolean; // 是否標記為最愛（☆）
   inSquad: boolean;
   busyState: 'free' | 'expedition' | 'mushroom';
   createdAt: number;
+}
+
+export type ExtraFryerSlotType = 'standard' | 'fast25';
+
+export interface ActiveExtraFryerSlot {
+  slotIndex: number; // 2 ~ 5（上方四個額外洞槽）
+  type: ExtraFryerSlotType; // standard: 一般額外欄位；fast25: 金色加速 +25% 欄位
+}
+
+export interface ExtraFryerSlotInventory {
+  standard: number;
+  fast25: number;
 }
 
 export type ExpeditionKind = 'seedling' | 'fruit' | 'gift';

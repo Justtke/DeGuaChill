@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActiveExtraFryerSlot,
   BigFlowerNode,
   calculateCreatureMushroomPower,
   createStarterNectarInventory,
@@ -8,6 +9,8 @@ import {
   DECOR_CATALOG,
   DeGuaCreature,
   ExpeditionItem,
+  ExtraFryerSlotInventory,
+  ExtraFryerSlotType,
   getPetalVariantMeta,
   MushroomNode,
   PetalColor,
@@ -38,8 +41,9 @@ import {
   onRealLandmarksUpdated,
   searchTaiwanPlaceCoordinates
 } from './services/realMapService';
-import { GardenWhistleView } from './components/GardenWhistleView';
+import { GardenWhistleView, MeadowFruitDrop } from './components/GardenWhistleView';
 import { FlowerPlantingModal, GlassPetalJarSvg } from './components/FlowerPlantingModal';
+import { WalkingPlayerAvatar } from './components/WalkingPlayerAvatar';
 import {
   PlantingMapHudOverlay,
   PlantingSessionSummaryData,
@@ -474,11 +478,31 @@ export const App: React.FC = () => {
     return { enabled: false, lat: myLat, lng: myLng, radiusMeters: 150 };
   });
 
-  // 瓜糰、地瓜球、每日生命週期狀態（凌晨 4 點重置 / 8 小時變花苞 / 步數結苞 / 21:00~04:00 鎖定）
+  // 瓜糰、額外欄位道具、地瓜球、每日生命週期狀態（凌晨 4 點重置 / 8 小時變花苞 / 步數結苞 / 21:00~04:00 鎖定）
   const [seedlings, setSeedlings] = useState<Seedling[]>(() => {
     const raw = localStorage.getItem('dg_seedlings_v2');
     return raw ? (JSON.parse(raw) as Seedling[]) : INITIAL_SEEDLINGS;
   });
+  const [extraSlotInventory, setExtraSlotInventory] = useState<ExtraFryerSlotInventory>(() => {
+    try {
+      const raw = localStorage.getItem('dg_extra_slots_v1');
+      if (raw) return JSON.parse(raw) as ExtraFryerSlotInventory;
+    } catch {
+      // ignore
+    }
+    return { standard: 2, fast25: 1 };
+  });
+  const [activeExtraSlots, setActiveExtraSlots] = useState<ActiveExtraFryerSlot[]>(() => {
+    try {
+      const raw = localStorage.getItem('dg_active_extra_slots_v1');
+      if (raw) return JSON.parse(raw) as ActiveExtraFryerSlot[];
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+  const activeExtraSlotsRef = useRef<ActiveExtraFryerSlot[]>(activeExtraSlots);
+  activeExtraSlotsRef.current = activeExtraSlots;
   const [dailyLifecycle, setDailyLifecycle] = useState<DailyLifecycleState>(() => {
     try {
       const raw = localStorage.getItem('dg_daily_lifecycle_v1');
@@ -578,6 +602,27 @@ export const App: React.FC = () => {
     localStorage.setItem('dg_seedlings_v2', JSON.stringify(seedlings));
     syncSeedlingsToNative(seedlings, isPlanting ? 1.2 : 1.0);
   }, [seedlings, isPlanting]);
+
+  useEffect(() => {
+    localStorage.setItem('dg_extra_slots_v1', JSON.stringify(extraSlotInventory));
+  }, [extraSlotInventory]);
+
+  useEffect(() => {
+    localStorage.setItem('dg_active_extra_slots_v1', JSON.stringify(activeExtraSlots));
+  }, [activeExtraSlots]);
+
+  // 依目前全景畫面動態同步 iOS Safari 頂部狀態列 / 瀏海 theme-color
+  useEffect(() => {
+    const color = isPlanterOpen
+      ? '#D5E8DC'
+      : isInteractiveMapOpen
+        ? '#5CAE50'
+        : isGardenOpen || showPlantingDrawer
+          ? '#4B9B36'
+          : '#2563EB';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
+    document.body.style.background = color;
+  }, [isPlanterOpen, isInteractiveMapOpen, isGardenOpen, showPlantingDrawer]);
 
   useEffect(() => {
     localStorage.setItem('dg_creatures_v2', JSON.stringify(creatures));
@@ -926,7 +971,13 @@ export const App: React.FC = () => {
     setSeedlings((prev) =>
       prev.map((s) => {
         if (s.slotIndex === null || s.isReady) return s;
-        const nextSteps = Math.min(s.targetSteps, s.currentSteps + effectiveSteps);
+        const isFastSlot = activeExtraSlotsRef.current.some(
+          (slot) => slot.slotIndex === s.slotIndex && slot.type === 'fast25'
+        );
+        const stepGain = isFastSlot
+          ? Math.max(1, Math.round(effectiveSteps * 1.25))
+          : effectiveSteps;
+        const nextSteps = Math.min(s.targetSteps, s.currentSteps + stepGain);
         const nowReady = nextSteps >= s.targetSteps;
 
         if (nowReady && !s.notified) {
@@ -1248,8 +1299,100 @@ export const App: React.FC = () => {
 
     setCreatures((prev) => [newCreature, ...prev]);
     setSeedlings((prev) => prev.filter((s) => s.id !== seedling.id));
+    if (seedling.slotIndex !== null && seedling.slotIndex >= 2) {
+      setActiveExtraSlots((prev) =>
+        prev.filter((slot) => slot.slotIndex !== seedling.slotIndex)
+      );
+    }
     setIsPlanterOpen(false);
     setNewlyPluckedCreature(newCreature);
+  };
+
+  const handleActivateExtraSlot = (type: ExtraFryerSlotType) => {
+    if (extraSlotInventory[type] <= 0) {
+      showToast('⚠️ 該種類額外欄位道具不足，可至商店購買或完成任務取得！');
+      return;
+    }
+    const used = new Set(activeExtraSlots.map((s) => s.slotIndex));
+    const freeIdx = [2, 3, 4, 5].find((idx) => !used.has(idx));
+    if (freeIdx === undefined) {
+      showToast('⚠️ 上排 4 個額外欄位已全部開啟！');
+      return;
+    }
+    setExtraSlotInventory((prev) => ({
+      ...prev,
+      [type]: Math.max(0, prev[type] - 1)
+    }));
+    setActiveExtraSlots((prev) => [
+      ...prev,
+      { slotIndex: freeIdx, type }
+    ]);
+    showToast(
+      type === 'fast25'
+        ? '⚡✨ 已開啟加速 +25% 金黃額外欄位！'
+        : '🔵 已開啟 1 口一般額外油鍋欄位！'
+    );
+  };
+
+  const handleToggleInSquad = (creatureId: string) => {
+    setCreatures((prev) => {
+      const target = prev.find((c) => c.id === creatureId);
+      if (!target) return prev;
+      const currentSquadCount = prev.filter((c) => c.inSquad).length;
+      if (!target.inSquad && currentSquadCount >= 10) {
+        showToast('⚠️ 散步隊伍最多容納 10 隻地瓜球，請先移除其他夥伴！');
+        return prev;
+      }
+      return prev.map((c) => (c.id === creatureId ? { ...c, inSquad: !c.inSquad } : c));
+    });
+  };
+
+  const handleToggleFavorite = (creatureId: string) => {
+    setCreatures((prev) =>
+      prev.map((c) => (c.id === creatureId ? { ...c, isFavorite: !c.isFavorite } : c))
+    );
+  };
+
+  const handleCollectAllFruits = (meadowFruitsCollected: MeadowFruitDrop[]) => {
+    const nectarGains: Record<PetalColor, number> = {
+      white: 0,
+      yellow: 0,
+      red: 0,
+      blue: 0
+    };
+    let totalPieces = 0;
+
+    meadowFruitsCollected.forEach((f) => {
+      nectarGains[f.color] += f.nectarAmount;
+      totalPieces += 1;
+    });
+
+    const claimedExpIds = new Set<string>();
+    expeditions.forEach((exp) => {
+      if (exp.kind === 'fruit' && exp.nectarColor && exp.nectarAmount) {
+        nectarGains[exp.nectarColor] += exp.nectarAmount;
+        claimedExpIds.add(exp.id);
+        totalPieces += 1;
+      }
+    });
+
+    const totalDrops =
+      nectarGains.white + nectarGains.yellow + nectarGains.red + nectarGains.blue;
+    if (totalDrops <= 0) {
+      showToast('😗 雙擊口哨確認！目前草原與探險的果實已全數收齊');
+      return;
+    }
+
+    setNectarJar((prev) => ({
+      white: prev.white + nectarGains.white,
+      yellow: prev.yellow + nectarGains.yellow,
+      red: prev.red + nectarGains.red,
+      blue: prev.blue + nectarGains.blue
+    }));
+    if (claimedExpIds.size > 0) {
+      setExpeditions((prev) => prev.filter((e) => !claimedExpIds.has(e.id)));
+    }
+    showToast(`🍎✨ 雙擊口哨一次收成 ${totalPieces} 顆果實，榨出 +${totalDrops} 滴精華花蜜！`);
   };
 
   // 花園拋出精華球餵食（套用皮克敏葉子+白精華變花苞 / 花苞雙倍花瓣 / 6/6 光禿禿規則）
@@ -1475,11 +1618,15 @@ export const App: React.FC = () => {
       discoveredAt: Date.now()
     };
     setSeedlings((prev) => [rewardSeed, ...prev]);
-    showToast('🎉 任務完成！等級提升並獲得【1,000步特殊飾品巨大瓜糰】與 💰100 金幣！');
+    setExtraSlotInventory((prev) => ({ ...prev, standard: prev.standard + 1 }));
+    showToast('🎉 任務完成！升級並獲得【1,000步巨大瓜糰】、💰100 金幣與 🔵 額外欄位 ×1！');
   };
 
   // 商店購買
-  const handleBuyShopItem = (cost: number, type: 'petals' | 'nectar' | 'radar' | 'seedling') => {
+  const handleBuyShopItem = (
+    cost: number,
+    type: 'petals' | 'nectar' | 'radar' | 'seedling' | 'extra_slot_std' | 'extra_slot_fast25'
+  ) => {
     if (coins < cost) {
       showToast(`⚠️ 金幣不足（需 💰${cost}），開啟種花模式散步就能免費賺金幣喔！`);
       return;
@@ -1501,6 +1648,12 @@ export const App: React.FC = () => {
         blue: prev.blue + 30
       }));
       showToast('🍯 已補充四色花蜜各 +30 滴！');
+    } else if (type === 'extra_slot_std') {
+      setExtraSlotInventory((prev) => ({ ...prev, standard: prev.standard + 1 }));
+      showToast('🔵 已購買【青藍額外欄位 ×1】，快去油鍋開啟第 3 口鍋！');
+    } else if (type === 'extra_slot_fast25') {
+      setExtraSlotInventory((prev) => ({ ...prev, fast25: prev.fast25 + 1 }));
+      showToast('🟡⚡ 已購買【金黃加速 +25% 額外欄位 ×1】！');
     } else if (type === 'radar') {
       setIsShopModalOpen(false);
       setIsDetectorOpen(true);
@@ -1880,7 +2033,7 @@ export const App: React.FC = () => {
               boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
             }}
           >
-            <span style={{ fontSize: 22 }}>🧑‍🌾</span>
+            <WalkingPlayerAvatar height={26} isWalking={false} />
             <span
               style={{
                 background: 'linear-gradient(135deg, #F59E0B, #B45309)',
@@ -1951,64 +2104,102 @@ export const App: React.FC = () => {
           <span>🌸</span><span>🪻</span><span>💮</span><span>🌼</span><span>🌺</span>
         </div>
 
-        {/* 中央主角與跟隨散步的地瓜球小隊 */}
+        {/* 中央走路小人與腳邊一起散步的迷你地瓜球小隊 */}
         <div
           onClick={() => setIsGardenOpen(true)}
           style={{
             position: 'relative',
             zIndex: 5,
+            width: 240,
+            height: 126,
             display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
             cursor: 'pointer',
-            marginBottom: 22
+            marginBottom: 18
           }}
         >
-          <div style={{ display: 'flex', gap: 4, marginBottom: -14, alignItems: 'flex-end' }}>
-            {squadCreatures.slice(0, 4).map((c) => (
-              <DeGuaCharacter
+          {/* 後排圍在腳邊後方的迷你地瓜球 */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 16,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              display: 'flex',
+              alignItems: 'flex-end',
+              gap: 10,
+              zIndex: 2
+            }}
+          >
+            {squadCreatures.slice(0, 4).map((c, idx) => (
+              <div
                 key={c.id}
-                variety={c.variety}
-                decor={c.decor}
-                leafStage={c.leafStage}
-                flowerColor={c.flowerColor}
-                showDecor={c.hasDecor}
-                size={60}
-              />
+                style={{
+                  transform: `translate(${idx < 2 ? -10 : 10}px, ${idx === 1 || idx === 2 ? -6 : 0}px)`
+                }}
+              >
+                <DeGuaCharacter
+                  variety={c.variety}
+                  decor={c.decor}
+                  leafStage={c.leafStage}
+                  flowerColor={c.flowerColor}
+                  showDecor={c.hasDecor}
+                  size={31}
+                  isBouncing={true}
+                />
+              </div>
             ))}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
-            {squadCreatures[4] && (
-              <DeGuaCharacter
-                variety={squadCreatures[4].variety}
-                decor={squadCreatures[4].decor}
-                leafStage={squadCreatures[4].leafStage}
-                flowerColor={squadCreatures[4].flowerColor}
-                showDecor={squadCreatures[4].hasDecor}
-                size={64}
-              />
-            )}
-            <div
-              style={{
-                fontSize: 62,
-                filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.28))',
-                lineHeight: 1
-              }}
-              className="degua-bounce"
-            >
-              🧑‍🌾
+          {/* 正中央邁步散步玩家角色 */}
+          <div style={{ position: 'relative', zIndex: 5, marginBottom: 4 }}>
+            <WalkingPlayerAvatar height={94} isWalking={true} />
+          </div>
+
+          {/* 貼緊在左右鞋子旁向前走的小隊員 */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 170,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-end',
+              zIndex: 7,
+              pointerEvents: 'none'
+            }}
+          >
+            <div style={{ display: 'flex', gap: 2 }}>
+              {squadCreatures.slice(4, 6).map((c) => (
+                <DeGuaCharacter
+                  key={c.id}
+                  variety={c.variety}
+                  decor={c.decor}
+                  leafStage={c.leafStage}
+                  flowerColor={c.flowerColor}
+                  showDecor={c.hasDecor}
+                  size={34}
+                  isBouncing={true}
+                />
+              ))}
             </div>
-            {squadCreatures[0] && (
-              <DeGuaCharacter
-                variety={squadCreatures[0].variety}
-                decor={squadCreatures[0].decor}
-                leafStage={squadCreatures[0].leafStage}
-                flowerColor={squadCreatures[0].flowerColor}
-                showDecor={squadCreatures[0].hasDecor}
-                size={64}
-              />
-            )}
+            <div style={{ display: 'flex', gap: 2 }}>
+              {squadCreatures.slice(6, 8).map((c) => (
+                <DeGuaCharacter
+                  key={c.id}
+                  variety={c.variety}
+                  decor={c.decor}
+                  leafStage={c.leafStage}
+                  flowerColor={c.flowerColor}
+                  showDecor={c.hasDecor}
+                  size={34}
+                  isBouncing={true}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
@@ -2209,9 +2400,14 @@ export const App: React.FC = () => {
         <div
           style={{
             position: 'fixed',
-            inset: 0,
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: '100lvh',
+            minHeight: '100lvh',
             zIndex: 950,
-            background: '#65B741',
+            background: '#5CAE50',
             display: 'flex',
             flexDirection: 'column'
           }}
@@ -2944,25 +3140,49 @@ export const App: React.FC = () => {
       {isPlanterOpen && (
         <PlanterPackModal
           seedlings={seedlings}
+          coins={coins}
           isPlanting={isPlanting}
+          extraSlotInventory={extraSlotInventory}
+          activeExtraSlots={activeExtraSlots}
           onAssignToSlot={handleAssignSeedlingToSlot}
           onPluckSeedling={handlePluckSeedling}
-          onDebugAddSteps={(steps) => addStepsAndCheckSeedlings(steps)}
+          onActivateExtraSlot={handleActivateExtraSlot}
+          onOpenDecorModal={() => {
+            setIsPlanterOpen(false);
+            setIsDecorModalOpen(true);
+          }}
+          onOpenMap={() => {
+            setIsPlanterOpen(false);
+            setIsInteractiveMapOpen(true);
+          }}
           onClose={() => setIsPlanterOpen(false)}
         />
       )}
 
-      {/* 😗 口哨（快速集合並餵食精華花蜜 & 滑動收花瓣） */}
+      {/* 😗 口哨花園（自由花草原散步 / 單擊集合 / 雙擊一次收水果 / 切換隊伍與最愛） */}
       {isGardenOpen && (
         <GardenWhistleView
           creatures={creatures}
+          coins={coins}
           nectarJar={nectarJar}
           petalJar={petalJar}
           selectedNectar={selectedNectar}
+          readyFruitExpeditionsCount={expeditions.filter((e) => e.kind === 'fruit').length}
           onSelectNectar={setSelectedNectar}
           onThrowNectarToFeed={handleThrowNectarToFeed}
           onSwipePluckSingle={handleSwipePluckSingle}
           onWhistleGather={handleWhistleGather}
+          onCollectAllFruits={handleCollectAllFruits}
+          onToggleInSquad={handleToggleInSquad}
+          onToggleFavorite={handleToggleFavorite}
+          onOpenPlanting={() => {
+            setIsGardenOpen(false);
+            setShowPlantingDrawer(true);
+          }}
+          onOpenPlanter={() => {
+            setIsGardenOpen(false);
+            setIsPlanterOpen(true);
+          }}
           onCloseGarden={() => setIsGardenOpen(false)}
         />
       )}
