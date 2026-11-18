@@ -8,13 +8,34 @@ export type DeGuaVariety =
   | 'rock';    // 竹炭岩石球 (對應岩石皮克敏：擊碎水晶)
 
 export type DecorCategory =
-  | 'bubble_tea'    // 🧋 手搖飲/咖啡廳
-  | 'convenience'   // 🏪 便利商店 (茶葉蛋/零食)
-  | 'bakery'        // 🥖 麵包烘焙店 (菠蘿皮)
-  | 'park'          // 🍀 公園 (四葉幸運草)
-  | 'station'       // 🚉 車站/捷運 (車票與列車帽)
-  | 'night_market'  // 🏮 餐廳/夜市 (竹籤梅粉袋)
-  | 'roadside';     // 🏷️ 路邊貼紙
+  | 'night_market'  // 🏮 餐廳 (主廚帽 / 稀有主廚帽)
+  | 'bubble_tea'    // ☕ 咖啡廳 (咖啡杯 / 稀有手搖杯)
+  | 'bakery'        // 🥖 麵包店 (法國麵包(稀有) / 法國麵包 / 現烤點心麵包)
+  | 'dessert'       // 🧁 甜點店 (馬卡龍 / 甜甜圈)
+  | 'cinema'        // 🍿 電影院 (爆米花 & 3D眼鏡)
+  | 'pharmacy'      // 🪥 藥局 (牙刷)
+  | 'zoo'           // 🦁 動物園 (蒲公英)
+  | 'forest'        // 🌲 森林 (獨角仙 / 橡實)
+  | 'waterside'     // 🎣 水邊 (路亞假餌(稀有) / 路亞假餌)
+  | 'post_office'   // 📮 郵局 (郵票)
+  | 'art_gallery'   // 🖼️ 美術館 (名畫相框)
+  | 'airport'       // ✈️ 機場 (玩具飛機)
+  | 'station'       // 🚉 車站 (紙火車 / 車票票根)
+  | 'beach'         // 🐚 海邊 (貝殼)
+  | 'hamburger'     // 🍔 漢堡店 (美式漢堡)
+  | 'convenience'   // 🏪 便利商店 (瓶蓋 / 零食)
+  | 'supermarket'   // 🛒 超市 (蘑菇 / 香蕉)
+  | 'hair_salon'    // ✂️ 美髮院 (剪刀與髮梳(稀有) / 剪刀與髮梳)
+  | 'clothing'      // 👕 服飾店 (髮圈 / 鈕扣)
+  | 'park'          // 🍀 公園 (四葉幸運草(稀有) / 幸運草)
+  | 'book'          // 📚 書店・圖書館 (迷你繪本)
+  | 'ramen'         // 🍜 拉麵店 (拉麵碗鑰匙圈)
+  | 'sushi'         // 🍣 壽司店 (握壽司)
+  | 'mountain'      // ⛰️ 山丘 (登山徽章)
+  | 'curry'         // 🍛 咖哩店 (香料咖哩碗)
+  | 'taco'          // 🌮 墨西哥餐廳 (塔可脆餅)
+  | 'roadside'      // 🏷️ 路邊 (路邊貼紙 / 金幣徽章(稀有))
+  | 'special';      // 🎊 特別活動 (週年花朵 / 麻將牌 / 金幣節慶)
 
 export type PetalColor = 'white' | 'yellow' | 'red' | 'blue';
 
@@ -39,19 +60,29 @@ export interface DecorMeta {
   icon: string;
 }
 
+export interface DecorSetEntry {
+  setId: string;
+  setName: string;
+  emoji: string;
+  isRare?: boolean;
+  varieties?: DeGuaVariety[];
+}
+
 export interface Seedling {
   id: string;
   variety: DeGuaVariety;
   decor: DecorCategory;
-  isHuge: boolean; // 10,000 步巨大花苗（拔出直接自帶飾品）
+  decorSetId?: string;
+  isHuge: boolean; // 10,000 步巨大瓜糰（起鍋直接自帶飾品）
   placeName: string;
   lat: number;
   lng: number;
   currentSteps: number;
   targetSteps: number;
-  slotIndex: number | null; // 0 或 1 代表正在培育槽中，null 代表在花苗背包
+  slotIndex: number | null; // 0~1 為預設雙鍋，2~5 為額外欄位，null 代表在背包
   isReady: boolean;
   notified: boolean;
+  isFavorite?: boolean;
   discoveredAt: number;
 }
 
@@ -60,6 +91,7 @@ export interface DeGuaCreature {
   name: string;
   variety: DeGuaVariety;
   decor: DecorCategory;
+  decorSetId?: string;
   placeName: string;
   lat: number;
   lng: number;
@@ -807,48 +839,140 @@ export const VARIETY_CATALOG: Record<DeGuaVariety, VarietyMeta> = {
 };
 
 export const DECOR_CATALOG: Record<DecorCategory, DecorMeta> = {
-  bubble_tea: {
-    id: 'bubble_tea',
-    name: '手搖珍奶杯',
-    placeCategory: '咖啡廳・手搖飲',
-    icon: '🧋'
-  },
-  convenience: {
-    id: 'convenience',
-    name: '超商茶葉蛋',
-    placeCategory: '便利商店',
-    icon: '🏪'
-  },
-  bakery: {
-    id: 'bakery',
-    name: '菠蘿麵包帽',
-    placeCategory: '烘焙麵包店',
-    icon: '🥖'
-  },
-  park: {
-    id: 'park',
-    name: '四葉幸運草',
-    placeCategory: '公園',
-    icon: '🍀'
-  },
-  station: {
-    id: 'station',
-    name: '紙火車與站長帽',
-    placeCategory: '車站',
-    icon: '🚉'
-  },
-  night_market: {
-    id: 'night_market',
-    name: '主廚帽與梅粉袋',
-    placeCategory: '餐廳・夜市',
-    icon: '🏮'
-  },
-  roadside: {
-    id: 'roadside',
-    name: '紀念貼紙',
-    placeCategory: '路邊',
-    icon: '🏷️'
-  }
+  night_market: { id: 'night_market', name: '主廚帽', placeCategory: '餐廳', icon: '👨‍🍳' },
+  bubble_tea: { id: 'bubble_tea', name: '咖啡與手搖飲', placeCategory: '咖啡廳', icon: '🧋' },
+  bakery: { id: 'bakery', name: '法國麵包與點心', placeCategory: '麵包店', icon: '🥖' },
+  dessert: { id: 'dessert', name: '馬卡龍與甜甜圈', placeCategory: '甜點店', icon: '🧁' },
+  cinema: { id: 'cinema', name: '爆米花與立體眼鏡', placeCategory: '電影院', icon: '🍿' },
+  pharmacy: { id: 'pharmacy', name: '可愛牙刷組', placeCategory: '藥局', icon: '🪥' },
+  zoo: { id: 'zoo', name: '草原蒲公英', placeCategory: '動物園', icon: '🦁' },
+  forest: { id: 'forest', name: '獨角仙與橡實', placeCategory: '森林', icon: '🌲' },
+  waterside: { id: 'waterside', name: '路亞假餌', placeCategory: '水邊', icon: '🎣' },
+  post_office: { id: 'post_office', name: '紀念郵票', placeCategory: '郵局', icon: '📮' },
+  art_gallery: { id: 'art_gallery', name: '典藏名畫相框', placeCategory: '美術館', icon: '🖼️' },
+  airport: { id: 'airport', name: '迷你玩具飛機', placeCategory: '機場', icon: '✈️' },
+  station: { id: 'station', name: '紙火車與車票', placeCategory: '車站', icon: '🚉' },
+  beach: { id: 'beach', name: '繽紛貝殼', placeCategory: '海邊', icon: '🐚' },
+  hamburger: { id: 'hamburger', name: '豪華漢堡堡', placeCategory: '漢堡店', icon: '🍔' },
+  convenience: { id: 'convenience', name: '瓶蓋與超商零食', placeCategory: '便利商店', icon: '🏪' },
+  supermarket: { id: 'supermarket', name: '蘑菇與水果籃', placeCategory: '超市', icon: '🛒' },
+  hair_salon: { id: 'hair_salon', name: '理髮剪刀與髮梳', placeCategory: '美髮院', icon: '✂️' },
+  clothing: { id: 'clothing', name: '髮圈與服飾鈕扣', placeCategory: '服飾店', icon: '👕' },
+  park: { id: 'park', name: '幸運草葉冠', placeCategory: '公園', icon: '🍀' },
+  book: { id: 'book', name: '迷你立體繪本', placeCategory: '書店・圖書館', icon: '📚' },
+  ramen: { id: 'ramen', name: '熱呼呼拉麵碗', placeCategory: '拉麵店', icon: '🍜' },
+  sushi: { id: 'sushi', name: '壽司師傅手捏壽司', placeCategory: '壽司店', icon: '🍣' },
+  mountain: { id: 'mountain', name: '山頂登頂徽章', placeCategory: '山丘', icon: '⛰️' },
+  curry: { id: 'curry', name: '濃郁香料咖哩碗', placeCategory: '咖哩店', icon: '🍛' },
+  taco: { id: 'taco', name: '脆皮塔可夾餅', placeCategory: '墨西哥餐廳', icon: '🌮' },
+  roadside: { id: 'roadside', name: '地標貼紙與金幣', placeCategory: '路邊', icon: '🏷️' },
+  special: { id: 'special', name: '週年花朵與節慶紀念', placeCategory: '特別活動', icon: '🎊' }
+};
+
+export const ALL_DECOR_CATEGORIES: DecorCategory[] = [
+  'night_market',
+  'bubble_tea',
+  'bakery',
+  'dessert',
+  'cinema',
+  'pharmacy',
+  'zoo',
+  'forest',
+  'waterside',
+  'post_office',
+  'art_gallery',
+  'airport',
+  'station',
+  'beach',
+  'hamburger',
+  'convenience',
+  'supermarket',
+  'hair_salon',
+  'clothing',
+  'park',
+  'book',
+  'ramen',
+  'sushi',
+  'mountain',
+  'curry',
+  'taco',
+  'roadside',
+  'special'
+];
+
+const SEVEN_COLORS: DeGuaVariety[] = ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'];
+const THREE_COLORS: DeGuaVariety[] = ['red', 'yellow', 'blue'];
+
+export const DECOR_SUBSETS_CATALOG: Record<DecorCategory, DecorSetEntry[]> = {
+  night_market: [
+    { setId: 'nm_chef_rare', setName: '主廚帽（稀有）', emoji: '👨‍🍳✨', isRare: true, varieties: ['red', 'yellow', 'blue', 'purple'] },
+    { setId: 'nm_chef', setName: '主廚帽', emoji: '👨‍🍳', varieties: SEVEN_COLORS },
+    { setId: 'nm_plum', setName: '夜市竹籤梅粉袋', emoji: '🏮', varieties: SEVEN_COLORS }
+  ],
+  bubble_tea: [
+    { setId: 'bt_cafe_rare', setName: '咖啡杯（稀有）', emoji: '☕✨', isRare: true, varieties: THREE_COLORS },
+    { setId: 'bt_cafe', setName: '咖啡杯＆手搖珍奶', emoji: '🧋', varieties: SEVEN_COLORS }
+  ],
+  bakery: [
+    { setId: 'bk_baguette_rare', setName: '法國麵包（稀有）', emoji: '🥖✨', isRare: true, varieties: ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'] },
+    { setId: 'bk_baguette', setName: '法國麵包', emoji: '🥖', varieties: SEVEN_COLORS },
+    { setId: 'bk_pastry', setName: '可頌・丹麥・蝴蝶餅・肉桂捲', emoji: '🥐', varieties: SEVEN_COLORS }
+  ],
+  dessert: [
+    { setId: 'ds_macaron', setName: '繽紛馬卡龍', emoji: '🧁', varieties: SEVEN_COLORS },
+    { setId: 'ds_donut', setName: '糖霜甜甜圈', emoji: '🍩', varieties: SEVEN_COLORS }
+  ],
+  cinema: [{ setId: 'cn_popcorn', setName: '電影爆米花・飲料', emoji: '🍿', varieties: SEVEN_COLORS }],
+  pharmacy: [{ setId: 'ph_brush', setName: '日常牙刷組', emoji: '🪥', varieties: SEVEN_COLORS }],
+  zoo: [{ setId: 'zo_dandelion', setName: '蒲公英絮花', emoji: '🦁', varieties: SEVEN_COLORS }],
+  forest: [
+    { setId: 'fr_beetle', setName: '獨角仙', emoji: '🪲', varieties: SEVEN_COLORS },
+    { setId: 'fr_acorn', setName: '森林橡實', emoji: '🌰', varieties: SEVEN_COLORS }
+  ],
+  waterside: [
+    { setId: 'wt_lure_rare', setName: '路亞假餌（稀有）', emoji: '🎣✨', isRare: true, varieties: THREE_COLORS },
+    { setId: 'wt_lure', setName: '路亞假餌', emoji: '🎣', varieties: SEVEN_COLORS }
+  ],
+  post_office: [{ setId: 'po_stamp', setName: '明信片郵票', emoji: '📮', varieties: SEVEN_COLORS }],
+  art_gallery: [{ setId: 'ag_frame', setName: '美術館典藏相框', emoji: '🖼️', varieties: SEVEN_COLORS }],
+  airport: [{ setId: 'ap_plane', setName: '玩具螺旋槳飛機', emoji: '✈️', varieties: SEVEN_COLORS }],
+  station: [
+    { setId: 'st_train', setName: '紙火車', emoji: '🚂', varieties: SEVEN_COLORS },
+    { setId: 'st_ticket', setName: '立體站長車票', emoji: '🎫', varieties: SEVEN_COLORS }
+  ],
+  beach: [{ setId: 'bc_shell', setName: '陽光海邊貝殼', emoji: '🐚', varieties: SEVEN_COLORS }],
+  hamburger: [{ setId: 'hb_burger', setName: '起司雙層漢堡', emoji: '🍔', varieties: SEVEN_COLORS }],
+  convenience: [
+    { setId: 'cv_cap', setName: '超商瓶蓋', emoji: '🧢', varieties: SEVEN_COLORS },
+    { setId: 'cv_snack', setName: '超商零食・茶葉蛋', emoji: '🏪', varieties: SEVEN_COLORS }
+  ],
+  supermarket: [
+    { setId: 'sm_mushroom', setName: '生鮮蘑菇袋', emoji: '🍄', varieties: SEVEN_COLORS },
+    { setId: 'sm_banana', setName: '香蕉水果串', emoji: '🍌', varieties: SEVEN_COLORS }
+  ],
+  hair_salon: [
+    { setId: 'hs_scissors_rare', setName: '剪刀與髮梳（稀有）', emoji: '✂️✨', isRare: true, varieties: THREE_COLORS },
+    { setId: 'hs_scissors', setName: '剪刀與髮梳', emoji: '✂️', varieties: SEVEN_COLORS }
+  ],
+  clothing: [{ setId: 'cl_hairtie', setName: '蝴蝶結髮圈＆鈕扣', emoji: '👕', varieties: SEVEN_COLORS }],
+  park: [
+    { setId: 'pk_clover_rare', setName: '四葉幸運草', emoji: '🍀✨', isRare: true, varieties: SEVEN_COLORS },
+    { setId: 'pk_clover', setName: '三葉幸運草', emoji: '☘️', varieties: SEVEN_COLORS }
+  ],
+  book: [{ setId: 'bk_book', setName: '迷你故事繪本', emoji: '📚', varieties: SEVEN_COLORS }],
+  ramen: [{ setId: 'rm_noodle', setName: '拉麵碗鑰匙圈', emoji: '🍜', varieties: ['red', 'yellow', 'blue'] }],
+  sushi: [{ setId: 'ss_sushi', setName: '現捏生魚片壽司', emoji: '🍣', varieties: THREE_COLORS }],
+  mountain: [{ setId: 'mt_badge', setName: '三角點登山別針', emoji: '⛰️', varieties: THREE_COLORS }],
+  curry: [{ setId: 'cr_curry', setName: '香料咖哩飯碗', emoji: '🍛', varieties: SEVEN_COLORS }],
+  taco: [{ setId: 'tc_taco', setName: '墨西哥塔可脆餅', emoji: '🌮', varieties: SEVEN_COLORS }],
+  roadside: [
+    { setId: 'rd_coin_rare', setName: '金幣徽章', emoji: '🪙', isRare: true, varieties: SEVEN_COLORS },
+    { setId: 'rd_sticker', setName: '路邊字母貼紙（綠／藍／橙）', emoji: '🏷️', varieties: SEVEN_COLORS }
+  ],
+  special: [
+    { setId: 'sp_anniv', setName: '週年慶紀念花飾', emoji: '🎊', varieties: SEVEN_COLORS },
+    { setId: 'sp_mahjong', setName: '節慶麻將牌', emoji: '🀄', varieties: SEVEN_COLORS }
+  ]
 };
 
 export const PETAL_META: Record<

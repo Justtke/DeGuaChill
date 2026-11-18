@@ -44,6 +44,7 @@ import {
 import { GardenWhistleView, MeadowFruitDrop } from './components/GardenWhistleView';
 import { FlowerPlantingModal, GlassPetalJarSvg } from './components/FlowerPlantingModal';
 import { WalkingPlayerAvatar } from './components/WalkingPlayerAvatar';
+import { LushFlowerMeadowBackdrop } from './components/LushFlowerMeadowBackdrop';
 import {
   PlantingMapHudOverlay,
   PlantingSessionSummaryData,
@@ -1283,6 +1284,7 @@ export const App: React.FC = () => {
       name: `${dMeta.icon}${vMeta.name}`,
       variety: seedling.variety,
       decor: seedling.decor,
+      decorSetId: seedling.decorSetId,
       placeName: seedling.placeName,
       lat: seedling.lat,
       lng: seedling.lng,
@@ -1350,6 +1352,12 @@ export const App: React.FC = () => {
   const handleToggleFavorite = (creatureId: string) => {
     setCreatures((prev) =>
       prev.map((c) => (c.id === creatureId ? { ...c, isFavorite: !c.isFavorite } : c))
+    );
+  };
+
+  const handleToggleFavoriteSeedling = (seedlingId: string) => {
+    setSeedlings((prev) =>
+      prev.map((s) => (s.id === seedlingId ? { ...s, isFavorite: !s.isFavorite } : s))
     );
   };
 
@@ -1694,21 +1702,38 @@ export const App: React.FC = () => {
     <div
       className="pikmin-app-shell"
       style={{
-        background: 'linear-gradient(180deg, #2563EB 0%, #60A5FA 18%, #BAE6FD 48%, #4ADE80 54%, #22C55E 100%)',
+        background: 'linear-gradient(180deg, #2563EB 0%, #60A5FA 22%, #BAE6FD 46%, #6CC644 50%, #3B8927 100%)',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        overflowY: 'auto'
+        overflowY: 'auto',
+        position: 'relative'
       }}
     >
-      {/* ==================== 上半部固定卡片區（100% 對照圖 3 真實皮克敏主畫面） ==================== */}
+      {/* 下半部皮克敏風格立體百花草原背景（從任務卡高度延伸至最底部，告別素色綠底） */}
       <div
         style={{
-          padding: 'max(10px, env(safe-area-inset-top)) 14px 4px',
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: '44%',
+          bottom: 0,
+          pointerEvents: 'none',
+          zIndex: 0
+        }}
+      >
+        <LushFlowerMeadowBackdrop variant="home" />
+      </div>
+
+      {/* ==================== 上半部固定卡片區（避開 iOS 頂部模糊區） ==================== */}
+      <div
+        style={{
+          padding: 'var(--top-safe-hud) 14px 4px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 9,
-          zIndex: 10
+          gap: 7,
+          zIndex: 10,
+          position: 'relative'
         }}
       >
         {/* 【頂部四顆純白膠囊】：飾品一覽 ｜ 好友 ｜ 通知 ｜ 說明 */}
@@ -2072,38 +2097,20 @@ export const App: React.FC = () => {
         </div>
       </div>
 
-      {/* ==================== 下半部花海草地角色散步場景 ＋ 底部按鈕群（完全對照圖 3） ==================== */}
+      {/* ==================== 下半部花海草地角色散步場景 ＋ 底部按鈕群（完全對照皮克敏主畫面） ==================== */}
       <div
         style={{
           flex: 1,
-          minHeight: 205,
+          minHeight: 190,
           position: 'relative',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           padding: '6px 16px max(16px, env(safe-area-inset-bottom))',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          zIndex: 5
         }}
       >
-        {/* 繽紛花叢背景 */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            opacity: 0.9,
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'space-around',
-            alignContent: 'space-around',
-            fontSize: 18
-          }}
-        >
-          <span>🌺</span><span>🌼</span><span>💮</span><span>🪻</span><span>🌸</span>
-          <span>💮</span><span>🌼</span><span>🌺</span><span>💮</span><span>🌼</span>
-          <span>🌸</span><span>🪻</span><span>💮</span><span>🌼</span><span>🌺</span>
-        </div>
-
         {/* 中央走路小人與腳邊一起散步的迷你地瓜球小隊 */}
         <div
           onClick={() => setIsGardenOpen(true)}
@@ -2452,7 +2459,7 @@ export const App: React.FC = () => {
                 onClick={() => requestAndApplyRealLocation(false, true)}
                 style={{
                   position: 'absolute',
-                  top: 'max(18px, env(safe-area-inset-top))',
+                  top: 'var(--top-safe-hud)',
                   left: 16,
                   zIndex: 500,
                   width: 44,
@@ -2482,7 +2489,7 @@ export const App: React.FC = () => {
               }}
               style={{
                 position: 'absolute',
-                top: 'max(18px, env(safe-area-inset-top))',
+                top: 'var(--top-safe-hud)',
                 right: 16,
                 zIndex: 500,
                 width: 44,
@@ -3140,12 +3147,14 @@ export const App: React.FC = () => {
       {isPlanterOpen && (
         <PlanterPackModal
           seedlings={seedlings}
+          creatures={creatures}
           coins={coins}
           isPlanting={isPlanting}
           extraSlotInventory={extraSlotInventory}
           activeExtraSlots={activeExtraSlots}
           onAssignToSlot={handleAssignSeedlingToSlot}
           onPluckSeedling={handlePluckSeedling}
+          onToggleFavoriteSeedling={handleToggleFavoriteSeedling}
           onActivateExtraSlot={handleActivateExtraSlot}
           onOpenDecorModal={() => {
             setIsPlanterOpen(false);

@@ -1,75 +1,203 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActiveExtraFryerSlot,
   DECOR_CATALOG,
+  DECOR_SUBSETS_CATALOG,
+  DeGuaCreature,
   DeGuaVariety,
   ExtraFryerSlotInventory,
   ExtraFryerSlotType,
   Seedling,
   VARIETY_CATALOG
 } from '../types/game';
+import { DeGuaCharacter } from './DeGuaCharacter';
 
 interface PlanterPackModalProps {
   seedlings: Seedling[];
+  creatures: DeGuaCreature[];
   coins: number;
   isPlanting: boolean;
   extraSlotInventory: ExtraFryerSlotInventory;
   activeExtraSlots: ActiveExtraFryerSlot[];
   onAssignToSlot: (seedlingId: string, slotIndex: number) => void;
   onPluckSeedling: (seedling: Seedling) => void;
+  onToggleFavoriteSeedling: (seedlingId: string) => void;
   onActivateExtraSlot: (type: ExtraFryerSlotType) => void;
   onOpenDecorModal: () => void;
   onOpenMap: () => void;
   onClose: () => void;
 }
 
-/** 繪製可愛 3D 感炸鍋裡的「瓜糰」SVG */
+function formatDiscoveredDateZh(ms: number): string {
+  const d = new Date(ms || Date.now());
+  const weekdays = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日，${weekdays[d.getDay()]}`;
+}
+
+/**
+ * 繪製可愛 3D 感炸鍋裡的「瓜糰」SVG（無綠葉新芽！依油炸步數進度動態呈現膨脹金黃度與冒煙熱氣比例）
+ */
 const GuatuanBallSvg: React.FC<{
   variety: DeGuaVariety;
   isHuge?: boolean;
-  size?: number;
+  inPot?: boolean;
+  progressPct?: number; // 0 ~ 1
   isReady?: boolean;
-}> = ({ variety, isHuge = false, size = 56, isReady = false }) => {
+  size?: number;
+}> = ({
+  variety,
+  isHuge = false,
+  inPot = false,
+  progressPct = 0,
+  isReady = false,
+  size = 56
+}) => {
   const meta = VARIETY_CATALOG[variety];
+  const pct = isReady ? 1 : Math.max(0, Math.min(1, progressPct));
   const fill = isHuge ? '#F59E0B' : meta.bodyColor;
   const stroke = isHuge ? '#B45309' : meta.potColor;
+
+  // 依據油炸快要起鍋的比例，決定熱氣煙霧縷數與大小
+  const steamCount = !inPot ? 0 : pct < 0.25 ? 1 : pct < 0.65 ? 2 : pct < 0.99 ? 3 : 4;
+  const steamOpacity = Math.min(0.95, 0.35 + pct * 0.6);
+  const puffRadius = (isHuge ? 21 : 17.5) + (inPot ? pct * 2.4 : 0);
+
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 64 64"
+    <div
       style={{
-        overflow: 'visible',
-        filter: isReady
-          ? 'drop-shadow(0 0 12px rgba(251,113,133,0.92)) drop-shadow(0 0 18px rgba(255,255,255,0.95))'
-          : 'drop-shadow(0 4px 6px rgba(0,0,0,0.18))'
+        position: 'relative',
+        width: size,
+        height: size,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center'
       }}
     >
-      {/* 頂部嫩綠新芽 */}
-      <path d="M32 28 C32 18 33 14 36 10" stroke="#4D7C0F" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-      <path
-        d="M35 12 C42 5 52 8 49 16 C45 20 36 17 35 12 Z"
-        fill={isReady ? '#D9F99D' : '#65A30D'}
-        stroke="#3F6212"
-        strokeWidth="1.2"
-      />
-      <path
-        d="M32 18 C25 13 19 16 21 21 C24 24 30 22 32 18 Z"
-        fill={isReady ? '#ECFCCB' : '#84CC16'}
-        stroke="#3F6212"
-        strokeWidth="1.1"
-      />
-      {/* 圓潤可口地瓜麵糰本體 */}
-      <circle cx="32" cy="40" r={isHuge ? 20 : 17} fill={fill} stroke={stroke} strokeWidth="2" />
-      <ellipse cx="26" cy="33" rx="6" ry="3.5" fill="rgba(255,255,255,0.45)" transform="rotate(-18 26 33)" />
-      {isHuge && (
-        <>
-          <circle cx="24" cy="44" r="2.2" fill="#FEF08A" opacity="0.85" />
-          <circle cx="39" cy="43" r="2" fill="#FEF08A" opacity="0.85" />
-          <circle cx="32" cy="49" r="1.8" fill="#FEF08A" opacity="0.85" />
-        </>
+      {/* 冒煙熱氣（只於油鍋油炸時依快要起鍋的比例升起） */}
+      {inPot && steamCount > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: -Math.round(size * 0.34),
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: size,
+            height: Math.round(size * 0.65),
+            pointerEvents: 'none',
+            zIndex: 6
+          }}
+        >
+          {[
+            { left: '34%', delay: '0s', scale: 0.78 },
+            { left: '54%', delay: '0.45s', scale: 0.95 },
+            { left: '22%', delay: '0.85s', scale: 0.85 },
+            { left: '68%', delay: '1.2s', scale: 1.05 }
+          ]
+            .slice(0, steamCount)
+            .map((wisp, idx) => (
+              <svg
+                key={idx}
+                width="20"
+                height="32"
+                viewBox="0 0 20 32"
+                style={{
+                  position: 'absolute',
+                  left: wisp.left,
+                  bottom: 0,
+                  marginLeft: -10,
+                  opacity: steamOpacity,
+                  transform: `scale(${wisp.scale})`,
+                  animation: `deguaSteamRise ${pct > 0.75 ? '1.35s' : '2.1s'} ease-out ${wisp.delay} infinite`
+                }}
+              >
+                <path
+                  d="M10 30 C4 22 15 16 9 9 C6 5 11 2 12 1"
+                  stroke={isReady ? '#FEF08A' : '#FFFFFF'}
+                  strokeWidth={pct > 0.7 ? '3.4' : '2.4'}
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              </svg>
+            ))}
+        </div>
       )}
-    </svg>
+
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 64 64"
+        style={{
+          overflow: 'visible',
+          animation: inPot && pct >= 0.65 ? 'deguaSizzleBob 1.1s ease-in-out infinite' : undefined,
+          filter: isReady
+            ? 'drop-shadow(0 0 12px rgba(251,191,36,0.92)) drop-shadow(0 0 18px rgba(255,255,255,0.95))'
+            : inPot && pct >= 0.7
+              ? 'drop-shadow(0 0 8px rgba(253,224,71,0.55)) drop-shadow(0 4px 6px rgba(0,0,0,0.18))'
+              : 'drop-shadow(0 4px 6px rgba(0,0,0,0.18))'
+        }}
+      >
+        {/* 鍋內沸騰小油泡 */}
+        {inPot && (
+          <g>
+            <circle
+              cx="14"
+              cy="48"
+              r={pct > 0.6 ? 2.4 : 1.6}
+              fill="#FEF08A"
+              style={{ animation: 'deguaOilBubble 1.1s ease-out infinite' }}
+            />
+            <circle
+              cx="50"
+              cy="47"
+              r={pct > 0.6 ? 2.2 : 1.5}
+              fill="#FDE047"
+              style={{ animation: 'deguaOilBubble 1.3s ease-out 0.45s infinite' }}
+            />
+            {pct >= 0.5 && (
+              <circle
+                cx="39"
+                cy="52"
+                r="2"
+                fill="#FFFFFF"
+                style={{ animation: 'deguaOilBubble 0.95s ease-out 0.7s infinite' }}
+              />
+            )}
+          </g>
+        )}
+
+        {/* 圓潤酥香的地瓜麵糰本體（完全沒有綠葉與枝芽！） */}
+        <circle
+          cx="32"
+          cy={inPot ? 38 - pct * 2.5 : 37}
+          r={puffRadius}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth="2.2"
+        />
+        {/* 隨油炸比例增加的金黃酥脆油光暈 */}
+        {inPot && pct > 0.25 && (
+          <circle
+            cx="32"
+            cy={38 - pct * 2.5}
+            r={puffRadius - 2}
+            fill="rgba(253, 224, 71, 0.28)"
+            opacity={pct * 0.65}
+          />
+        )}
+        {/* 酥脆高光弧與焦糖斑點 */}
+        <ellipse
+          cx="25"
+          cy={(inPot ? 38 - pct * 2.5 : 37) - puffRadius * 0.4}
+          rx={puffRadius * 0.36}
+          ry={puffRadius * 0.2}
+          fill="rgba(255,255,255,0.48)"
+          transform={`rotate(-20 25 ${(inPot ? 38 - pct * 2.5 : 37) - puffRadius * 0.4})`}
+        />
+        <circle cx="24" cy="43" r="1.9" fill={isHuge ? '#FEF08A' : 'rgba(255,255,255,0.45)'} />
+        <circle cx="40" cy="41" r="1.7" fill={isHuge ? '#FEF08A' : 'rgba(255,255,255,0.38)'} />
+        {isHuge && <circle cx="33" cy="47" r="2.1" fill="#FEF08A" />}
+      </svg>
+    </div>
   );
 };
 
@@ -94,12 +222,14 @@ const ExtraSlotSaucerSvg: React.FC<{
 
 export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
   seedlings,
+  creatures,
   coins,
   isPlanting,
   extraSlotInventory,
   activeExtraSlots,
   onAssignToSlot,
   onPluckSeedling,
+  onToggleFavoriteSeedling,
   onActivateExtraSlot,
   onOpenDecorModal,
   onOpenMap,
@@ -107,11 +237,27 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
 }) => {
   const [isBagDrawerOpen, setIsBagDrawerOpen] = useState<boolean>(false);
   const [isExtraDrawerOpen, setIsExtraDrawerOpen] = useState<boolean>(false);
+  const [inspectedSeedlingId, setInspectedSeedlingId] = useState<string | null>(null);
+  const [detailSheetPct, setDetailSheetPct] = useState<number>(58); // 圖5 (58%) <-> 圖6/7 (90%)
+  const [showDetailHelp, setShowDetailHelp] = useState<boolean>(false);
   const [preselectedSlot, setPreselectedSlot] = useState<number | null>(null);
   const [selectedExtraType, setSelectedExtraType] = useState<ExtraFryerSlotType>('standard');
   const [colorFilter, setColorFilter] = useState<DeGuaVariety | 'huge' | null>(null);
   const [sortMode, setSortMode] = useState<'decor' | 'steps'>('decor');
   const [bagNotice, setBagNotice] = useState<string | null>(null);
+
+  const detailDragRef = useRef<{ active: boolean; startY: number; startPct: number; moved: boolean }>({
+    active: false,
+    startY: 0,
+    startPct: 58,
+    moved: false
+  });
+  const detailScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const inspectedSeedling = useMemo(
+    () => seedlings.find((s) => s.id === inspectedSeedlingId) ?? null,
+    [seedlings, inspectedSeedlingId]
+  );
 
   const bagSeedlings = useMemo(
     () => seedlings.filter((s) => s.slotIndex === null),
@@ -163,31 +309,40 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
     setPreselectedSlot(slotIdx);
     setBagNotice(null);
     setIsExtraDrawerOpen(false);
+    setInspectedSeedlingId(null);
     setIsBagDrawerOpen(true);
   };
 
-  const handleSeedlingCardTap = (seed: Seedling) => {
+  const handleInspectSeedling = (seed: Seedling) => {
+    setIsExtraDrawerOpen(false);
+    setShowDetailHelp(false);
+    setDetailSheetPct(58);
+    setInspectedSeedlingId(seed.id);
+  };
+
+  const handlePutSeedlingInSlot = (seed: Seedling) => {
     const freeSlot = findNextAvailableSlot();
     if (freeSlot === null) {
-      setBagNotice('目前油鍋欄位已滿！關閉抽屜後可點右下使用「額外欄位」擴充。');
+      setBagNotice('目前油鍋欄位已滿！關閉後點右下使用「額外欄位」擴充。');
       return;
     }
     onAssignToSlot(seed.id, freeSlot);
     setPreselectedSlot(null);
+    setInspectedSeedlingId(null);
     setIsBagDrawerOpen(false);
   };
 
   const handleSlotTap = (slotIdx: number, slotType: ExtraFryerSlotType = 'standard') => {
     const s = occupiedSlots[slotIdx];
     if (s) {
-      if (s.isReady) {
-        onPluckSeedling(s);
-      }
+      // 點在炸中的瓜糰 -> 打開圖5/6/7可上拉細節與同分類圖鑑抽屜！
+      handleInspectSeedling(s);
       return;
     }
     const isUnlocked = slotIdx < 2 || Boolean(unlockedExtraMap[slotIdx]);
     if (!isUnlocked) {
       setIsBagDrawerOpen(false);
+      setInspectedSeedlingId(null);
       setSelectedExtraType(
         extraSlotInventory.fast25 > 0 && extraSlotInventory.standard === 0 ? 'fast25' : slotType
       );
@@ -195,6 +350,39 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
       return;
     }
     handleOpenBagForSlot(slotIdx);
+  };
+
+  // 圖5/6/7 瓜糰細節卡拖曳伸縮手勢
+  const handleDetailPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    detailDragRef.current = {
+      active: true,
+      startY: e.clientY,
+      startPct: detailSheetPct,
+      moved: false
+    };
+  };
+
+  const handleDetailPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!detailDragRef.current.active) return;
+    const dy = detailDragRef.current.startY - e.clientY;
+    const scrollTop = detailScrollRef.current?.scrollTop ?? 0;
+    if (detailDragRef.current.startPct >= 85 && scrollTop > 2 && dy < 0) return;
+    if (Math.abs(dy) > 8) detailDragRef.current.moved = true;
+    else return;
+    const vh = window.innerHeight || 800;
+    const clamped = Math.max(52, Math.min(91, detailDragRef.current.startPct + (dy / vh) * 100));
+    setDetailSheetPct(clamped);
+  };
+
+  const handleDetailPointerUp = () => {
+    if (!detailDragRef.current.active) return;
+    const wasMoved = detailDragRef.current.moved;
+    detailDragRef.current.active = false;
+    if (!wasMoved) return;
+    setDetailSheetPct((prev) => (prev >= 72 ? 90 : 58));
+    window.setTimeout(() => {
+      detailDragRef.current.moved = false;
+    }, 80);
   };
 
   const totalExtraItems = extraSlotInventory.standard + extraSlotInventory.fast25;
@@ -210,7 +398,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
     { id: 'huge', hex: 'linear-gradient(135deg, #FDE047 50%, #CA8A04 50%)' }
   ];
 
-  // 上排 4 個凹槽孔洞視覺偏移，還原圖 6 柔和弧形平台排列
   const upperHoleSpecs = [
     { slotIndex: 2, yOffset: 10 },
     { slotIndex: 3, yOffset: 0 },
@@ -221,9 +408,10 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
   const renderFryerPot = (slotIdx: number, variant: ExtraFryerSlotType = 'standard', size: 'lg' | 'sm' = 'lg') => {
     const s = occupiedSlots[slotIdx];
     const isGold = variant === 'fast25';
-    const pct = s ? Math.min(100, Math.round((s.currentSteps / s.targetSteps) * 100)) : 0;
+    const progressRatio = s ? Math.min(1, s.currentSteps / Math.max(1, s.targetSteps)) : 0;
+    const pct = Math.round(progressRatio * 100);
     const remaining = s ? Math.max(0, s.targetSteps - s.currentSteps) : 0;
-    const potWidth = size === 'lg' ? 116 : 74;
+    const potWidth = size === 'lg' ? 118 : 76;
 
     return (
       <div
@@ -238,22 +426,45 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
           width: potWidth
         }}
       >
-        {/* 步數顯示 ＋ 進度條（完全對照圖 6 簡潔排版：僅步數與綠條，不塞多餘文字） */}
+        {/* 步數顯示 ＋ 進度條 ＋ 可起鍋快速按鈕 */}
         {s ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 4, zIndex: 5 }}>
-            <div
-              style={{
-                fontSize: size === 'lg' ? 20 : 14,
-                fontWeight: 900,
-                color: '#FFFFFF',
-                textShadow: '0 2px 6px rgba(15,118,110,0.45)',
-                WebkitTextStroke: '1px rgba(21,128,61,0.55)',
-                letterSpacing: -0.5,
-                lineHeight: 1.05
-              }}
-            >
-              {s.isReady ? s.targetSteps : remaining}
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 4, zIndex: 8 }}>
+            {s.isReady ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPluckSeedling(s);
+                }}
+                style={{
+                  border: '1.5px solid #FFFFFF',
+                  background: 'linear-gradient(135deg, #F59E0B, #EA580C)',
+                  color: '#FFFFFF',
+                  fontSize: size === 'lg' ? 11.5 : 9.5,
+                  fontWeight: 900,
+                  padding: '2px 9px',
+                  borderRadius: 99,
+                  cursor: 'pointer',
+                  marginBottom: 2,
+                  boxShadow: '0 4px 10px rgba(234,88,12,0.4)'
+                }}
+              >
+                🥄 起鍋！
+              </button>
+            ) : (
+              <div
+                style={{
+                  fontSize: size === 'lg' ? 20 : 14,
+                  fontWeight: 900,
+                  color: '#FFFFFF',
+                  textShadow: '0 2px 6px rgba(15,118,110,0.45)',
+                  WebkitTextStroke: '1px rgba(21,128,61,0.55)',
+                  letterSpacing: -0.5,
+                  lineHeight: 1.05
+                }}
+              >
+                {remaining}
+              </div>
+            )}
             <div
               style={{
                 width: size === 'lg' ? 84 : 56,
@@ -281,7 +492,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
           <div style={{ height: size === 'lg' ? 32 : 20 }} />
         )}
 
-        {/* 炸鍋 ＋ 瓜糰嫩芽 */}
+        {/* 油鍋 ＋ 冒煙油炸中的瓜糰 */}
         <div
           style={{
             position: 'relative',
@@ -292,7 +503,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
             justifyContent: 'center'
           }}
         >
-          {/* 炸鍋底座圓盤 */}
           <div
             style={{
               width: potWidth,
@@ -309,14 +519,13 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               justifyContent: 'center'
             }}
           >
-            {/* 鍋體碗 */}
             <div
               style={{
                 width: size === 'lg' ? 76 : 50,
                 height: size === 'lg' ? 36 : 24,
                 borderRadius: '50%',
                 background: s
-                  ? 'radial-gradient(circle at 50% 38%, #78350F, #451A03)'
+                  ? 'radial-gradient(circle at 50% 38%, #B45309, #451A03)'
                   : 'rgba(15,23,42,0.16)',
                 border: s ? '3px solid #D97706' : '2px dashed rgba(255,255,255,0.6)',
                 marginTop: size === 'lg' ? -10 : -6,
@@ -338,7 +547,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               className={s.isReady ? 'degua-bounce' : undefined}
               style={{
                 position: 'absolute',
-                bottom: size === 'lg' ? 20 : 12,
+                bottom: size === 'lg' ? 18 : 11,
                 zIndex: 4,
                 pointerEvents: 'none'
               }}
@@ -346,6 +555,8 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               <GuatuanBallSvg
                 variety={s.variety}
                 isHuge={s.isHuge}
+                inPot={true}
+                progressPct={progressRatio}
                 size={size === 'lg' ? 66 : 44}
                 isReady={s.isReady}
               />
@@ -374,6 +585,9 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
     );
   };
 
+  const detailMeta = inspectedSeedling ? DECOR_CATALOG[inspectedSeedling.decor] : null;
+  const detailSubsets = inspectedSeedling ? DECOR_SUBSETS_CATALOG[inspectedSeedling.decor] || [] : [];
+
   return (
     <div
       style={{
@@ -394,10 +608,10 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
         userSelect: 'none'
       }}
     >
-      {/* 右上角：透亮金幣膠囊（完全對照圖 6，不放冗餘文字與橫幅） */}
+      {/* 右上角：透亮金幣膠囊（使用 --top-safe-hud 避開 iOS 頂部模糊區） */}
       <div
         style={{
-          padding: 'max(14px, env(safe-area-inset-top)) 16px 0',
+          padding: 'var(--top-safe-hud) 16px 0',
           display: 'flex',
           justifyContent: 'flex-end',
           zIndex: 20
@@ -423,7 +637,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
         </div>
       </div>
 
-      {/* 中央潔淨廚房工作台：上排 4 個額外欄位凹洞 ＋ 預設 2 個主油鍋 */}
+      {/* 中央工作台：上排 4 個額外欄位凹洞 ＋ 預設 2 個主油鍋 */}
       <div
         style={{
           flex: 1,
@@ -435,7 +649,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
           position: 'relative'
         }}
       >
-        {/* 柔和純白檯面光暈 */}
         <div
           style={{
             position: 'absolute',
@@ -448,7 +661,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
           }}
         />
 
-        {/* 上排 4 個預留凹槽孔（使用「額外欄位」道具即可開啟為青藍鍋或金黃 +25% 加速鍋） */}
+        {/* 上排 4 個額外欄位凹洞 */}
         <div
           style={{
             display: 'flex',
@@ -553,7 +766,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
           ✕
         </button>
 
-        {/* 中央：擁有瓜糰圖示 + 數量徽章 */}
         <button
           onClick={() => handleOpenBagForSlot(null)}
           style={{
@@ -566,7 +778,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
           }}
           title="打開瓜糰背包"
         >
-          <GuatuanBallSvg variety="yellow" isHuge={true} size={74} />
+          <GuatuanBallSvg variety="yellow" isHuge={true} size={72} />
           <span
             style={{
               position: 'absolute',
@@ -590,10 +802,10 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
           </span>
         </button>
 
-        {/* 右下：額外欄位道具圖示 + 數量徽章 */}
         <button
           onClick={() => {
             setIsBagDrawerOpen(false);
+            setInspectedSeedlingId(null);
             setIsExtraDrawerOpen(true);
           }}
           style={{
@@ -634,8 +846,8 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
         </button>
       </div>
 
-      {/* ==================== 圖 7：點下方瓜糰後，可上拉的純白瓜糰背包卡片（正體中文） ==================== */}
-      {isBagDrawerOpen && (
+      {/* ==================== 瓜糰背包抽屜（正體中文，點擊任一瓜糰可放進鍋中或先查看詳情） ==================== */}
+      {isBagDrawerOpen && !inspectedSeedling && (
         <div
           onClick={() => setIsBagDrawerOpen(false)}
           style={{
@@ -660,7 +872,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               overflow: 'hidden'
             }}
           >
-            {/* 頂部把手 ＋ 20 / 35 ＋ 飾品類型 ▼ */}
             <div style={{ padding: '10px 18px 8px' }}>
               <div
                 style={{
@@ -692,7 +903,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
                 </button>
               </div>
 
-              {/* 8 色瓜糰圓點篩選列 */}
               <div
                 style={{
                   display: 'flex',
@@ -742,7 +952,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               )}
             </div>
 
-            {/* 三欄式瓜糰格線卡片（正體中文：步數 / ○○瓜糰 / 地點 ＋ 右上飾品分類水印） */}
             <div
               style={{
                 flex: 1,
@@ -760,7 +969,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
                 return (
                   <button
                     key={s.id}
-                    onClick={() => handleSeedlingCardTap(s)}
+                    onClick={() => handleInspectSeedling(s)}
                     style={{
                       position: 'relative',
                       border: 'none',
@@ -789,6 +998,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
                     <GuatuanBallSvg
                       variety={s.variety}
                       isHuge={s.isHuge}
+                      inPot={false}
                       size={s.isHuge ? 62 : 52}
                     />
                     <div style={{ fontSize: 13.5, fontWeight: 900, color: '#334155', marginTop: 4 }}>
@@ -831,7 +1041,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               )}
             </div>
 
-            {/* 底部導航列：< ｜ 🎖️ 飾品一覽 ｜ 🗺️ 地圖 */}
             <div
               style={{
                 padding: '10px 16px max(18px, env(safe-area-inset-bottom))',
@@ -905,7 +1114,505 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
         </div>
       )}
 
-      {/* ==================== 圖 8：額外欄位卡片（一般欄位 ＆ 金黃加速+25%欄位） ==================== */}
+      {/* ==================== 圖 5、6、7：點擊瓜糰彈出「細節 ＆ 上拉看更多細節與該分類飾品圖鑑」白卡 ==================== */}
+      {inspectedSeedling && detailMeta && (
+        <div
+          onClick={() => setInspectedSeedlingId(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 70,
+            background: 'rgba(15,23,42,0.18)',
+            display: 'flex',
+            alignItems: 'flex-end'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={handleDetailPointerDown}
+            onPointerMove={handleDetailPointerMove}
+            onPointerUp={handleDetailPointerUp}
+            onPointerCancel={handleDetailPointerUp}
+            style={{
+              width: '100%',
+              height: `${detailSheetPct}lvh`,
+              background: '#FFFFFF',
+              borderRadius: '28px 28px 0 0',
+              boxShadow: '0 -8px 28px rgba(0,0,0,0.18)',
+              display: 'flex',
+              flexDirection: 'column',
+              transition: detailDragRef.current.active
+                ? 'none'
+                : 'height 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+              overflow: 'hidden'
+            }}
+          >
+            {/* 頂部把手 ＋ ? 說明鈕 */}
+            <div
+              onClick={() => setDetailSheetPct((p) => (p >= 75 ? 58 : 90))}
+              style={{
+                padding: '10px 16px 4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+                cursor: 'pointer'
+              }}
+            >
+              <div style={{ width: 44, height: 5, borderRadius: 99, background: '#CBD5E1' }} />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDetailHelp((v) => !v);
+                }}
+                style={{
+                  position: 'absolute',
+                  right: 16,
+                  top: 10,
+                  width: 34,
+                  height: 34,
+                  borderRadius: '50%',
+                  border: '1.5px solid #E2E8F0',
+                  background: '#FFFFFF',
+                  color: '#334155',
+                  fontSize: 15,
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                }}
+                title="瓜糰與飾品圖鑑說明"
+              >
+                ?
+              </button>
+            </div>
+
+            {showDetailHelp && (
+              <div
+                style={{
+                  margin: '4px 18px 6px',
+                  background: '#F0FDF4',
+                  border: '1px solid #BBF7D0',
+                  borderRadius: 14,
+                  padding: '8px 12px',
+                  fontSize: 12,
+                  color: '#166534',
+                  fontWeight: 700,
+                  lineHeight: 1.5
+                }}
+              >
+                散步累積步數會讓瓜糰逐漸蓬鬆並冒出熱氣香煙；炸熟後即可用網勺撈起！向上滑動此白卡可查看該地點的完整飾品分類圖鑑。
+              </div>
+            )}
+
+            {/* 可捲動主內容區（展開看圖 6 發現資訊 ＋ 圖 7 分類完整圖鑑） */}
+            <div
+              ref={detailScrollRef}
+              onScroll={(e) => {
+                if ((e.currentTarget.scrollTop || 0) > 12 && detailSheetPct < 85) {
+                  setDetailSheetPct(90);
+                }
+              }}
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '6px 18px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 14
+              }}
+            >
+              {/* 圖 5 頂部展示：油鍋中的冒煙瓜糰 ＋ 右側淡分類水印 */}
+              <div
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  paddingTop: 14
+                }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    right: 44,
+                    top: 6,
+                    fontSize: 74,
+                    opacity: 0.16,
+                    transform: 'rotate(24deg)',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  {detailMeta.icon}
+                </span>
+
+                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ marginBottom: -14, zIndex: 3 }}>
+                    <GuatuanBallSvg
+                      variety={inspectedSeedling.variety}
+                      isHuge={inspectedSeedling.isHuge}
+                      inPot={inspectedSeedling.slotIndex !== null}
+                      progressPct={
+                        inspectedSeedling.slotIndex !== null
+                          ? inspectedSeedling.currentSteps / Math.max(1, inspectedSeedling.targetSteps)
+                          : 0
+                      }
+                      isReady={inspectedSeedling.isReady}
+                      size={78}
+                    />
+                  </div>
+                  <ExtraSlotSaucerSvg
+                    type={
+                      inspectedSeedling.slotIndex !== null &&
+                      unlockedExtraMap[inspectedSeedling.slotIndex]?.type === 'fast25'
+                        ? 'fast25'
+                        : 'standard'
+                    }
+                    size={96}
+                  />
+                </div>
+
+                {/* 名稱 ＋ ☆ 最愛 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                  <div style={{ fontSize: 23, fontWeight: 900, color: '#334155' }}>
+                    {inspectedSeedling.isHuge
+                      ? '巨大瓜糰'
+                      : VARIETY_CATALOG[inspectedSeedling.variety].potName}
+                  </div>
+                  <button
+                    onClick={() => onToggleFavoriteSeedling(inspectedSeedling.id)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      fontSize: 22,
+                      cursor: 'pointer',
+                      color: inspectedSeedling.isFavorite ? '#F59E0B' : '#CBD5E1',
+                      padding: 0
+                    }}
+                    title="標記最愛瓜糰"
+                  >
+                    {inspectedSeedling.isFavorite ? '★' : '☆'}
+                  </button>
+                </div>
+
+                {/* 步數比例進度條 */}
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#64748B', marginTop: 4 }}>
+                  {inspectedSeedling.currentSteps.toLocaleString()} /{' '}
+                  {inspectedSeedling.targetSteps.toLocaleString()}步
+                </div>
+                <div
+                  style={{
+                    width: 140,
+                    height: 6,
+                    borderRadius: 99,
+                    background: '#E2E8F0',
+                    overflow: 'hidden',
+                    marginTop: 8
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round(
+                          (inspectedSeedling.currentSteps /
+                            Math.max(1, inspectedSeedling.targetSteps)) *
+                            100
+                        )
+                      )}%`,
+                      height: '100%',
+                      background: '#3E9A8C',
+                      transition: 'width 0.3s ease'
+                    }}
+                  />
+                </div>
+
+                {/* 操作按紐：在油鍋且炸熟 -> 起鍋；在背包 -> 下鍋炸 */}
+                {inspectedSeedling.slotIndex !== null && inspectedSeedling.isReady && (
+                  <button
+                    onClick={() => {
+                      onPluckSeedling(inspectedSeedling);
+                      setInspectedSeedlingId(null);
+                    }}
+                    style={{
+                      marginTop: 12,
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #F59E0B, #EA580C)',
+                      color: '#FFFFFF',
+                      fontSize: 14,
+                      fontWeight: 900,
+                      padding: '10px 26px',
+                      borderRadius: 99,
+                      cursor: 'pointer',
+                      boxShadow: '0 6px 16px rgba(234,88,12,0.3)'
+                    }}
+                  >
+                    🥄 用網勺從鍋裡撈起！
+                  </button>
+                )}
+
+                {inspectedSeedling.slotIndex === null && (
+                  <button
+                    onClick={() => handlePutSeedlingInSlot(inspectedSeedling)}
+                    style={{
+                      marginTop: 12,
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #14B8A6, #0D9488)',
+                      color: '#FFFFFF',
+                      fontSize: 14,
+                      fontWeight: 900,
+                      padding: '10px 26px',
+                      borderRadius: 99,
+                      cursor: 'pointer',
+                      boxShadow: '0 6px 16px rgba(13,148,136,0.28)'
+                    }}
+                  >
+                    🍳 放進油鍋開始炸！
+                  </button>
+                )}
+              </div>
+
+              {/* 圖 6 發現資訊卡片 */}
+              <div
+                style={{
+                  width: '100%',
+                  border: '1.5px solid #E2E8F0',
+                  borderRadius: 16,
+                  padding: '14px 14px',
+                  background: '#FFFFFF',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: '50% 50% 50% 0',
+                      transform: 'rotate(-45deg)',
+                      background: '#DF6D6D',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}
+                  >
+                    <span style={{ transform: 'rotate(45deg)', fontSize: 15 }}>{detailMeta.icon}</span>
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 900 }}>
+                      <span style={{ color: '#DC2626' }}>{detailMeta.placeCategory}</span>
+                      <span style={{ color: '#94A3B8', margin: '0 5px' }}>/</span>
+                      <span style={{ color: '#84A341' }}>
+                        {detailSubsets[0]?.setName || detailMeta.name}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 13.5,
+                        fontWeight: 700,
+                        color: '#334155',
+                        marginTop: 2
+                      }}
+                    >
+                      {inspectedSeedling.placeName}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 4 }}>
+                  <span style={{ fontSize: 18, color: '#64748B' }}>📅</span>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
+                    發現日：{formatDiscoveredDateZh(inspectedSeedling.discoveredAt)}
+                  </div>
+                </div>
+              </div>
+
+              {/* 圖 6 下方 & 圖 7：該分類完整飾品圖鑑卡片（含稀有＆標準多系列！上拉即可滑動瀏覽） */}
+              <div
+                style={{
+                  width: '100%',
+                  border: '2px solid #EFE4BA',
+                  borderRadius: 18,
+                  padding: '14px 12px 18px',
+                  background: '#FFFDF7',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 14
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: '50%',
+                      background: 'radial-gradient(circle at 30% 30%, #FEF9C3, #EAB308)',
+                      border: '2px solid #D97706',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 18
+                    }}
+                  >
+                    {detailMeta.icon}
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#334155' }}>
+                    {detailMeta.placeCategory}
+                  </div>
+                </div>
+
+                {detailSubsets.map((sub) => {
+                  const list = sub.varieties || [
+                    'red',
+                    'yellow',
+                    'blue',
+                    'purple',
+                    'white',
+                    'winged',
+                    'rock'
+                  ];
+                  return (
+                    <div key={sub.setId} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(4, 1fr)',
+                          gap: 8,
+                          justifyItems: 'center'
+                        }}
+                      >
+                        {list.map((v) => {
+                          const unlocked = creatures.some(
+                            (c) =>
+                              c.hasDecor &&
+                              c.decor === inspectedSeedling.decor &&
+                              c.variety === v &&
+                              (!c.decorSetId || c.decorSetId === sub.setId || !sub.isRare)
+                          );
+                          return (
+                            <div
+                              key={`${sub.setId}_${v}`}
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                filter: unlocked
+                                  ? 'drop-shadow(0 2px 6px rgba(245,158,11,0.28))'
+                                  : 'grayscale(1) contrast(0.35) brightness(1.42)',
+                                opacity: unlocked ? 1 : 0.44
+                              }}
+                            >
+                              <DeGuaCharacter
+                                variety={v}
+                                decor={inspectedSeedling.decor}
+                                leafStage="flower"
+                                flowerColor="yellow"
+                                showDecor={true}
+                                size={52}
+                                isBouncing={false}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div
+                        style={{
+                          textAlign: 'center',
+                          fontSize: 13,
+                          fontWeight: 900,
+                          color: sub.isRare ? '#D97706' : '#7C9442',
+                          marginTop: 2,
+                          marginBottom: 4
+                        }}
+                      >
+                        {sub.setName}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 底部固定列：< ｜ 🎖️ 飾品一覽 ｜ 🗺️ 地圖 */}
+            <div
+              style={{
+                padding: '10px 16px max(18px, env(safe-area-inset-bottom))',
+                background: 'linear-gradient(180deg, rgba(255,255,255,0.85), #FFFFFF)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10
+              }}
+            >
+              <button
+                onClick={() => setInspectedSeedlingId(null)}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  border: '1.5px solid #E2E8F0',
+                  background: '#FFFFFF',
+                  color: '#334155',
+                  fontSize: 18,
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                }}
+              >
+                &lt;
+              </button>
+
+              <button
+                onClick={() => {
+                  setInspectedSeedlingId(null);
+                  onOpenDecorModal();
+                }}
+                style={{
+                  flex: 1,
+                  border: '1.5px solid #E2E8F0',
+                  background: '#FFFFFF',
+                  color: '#334155',
+                  borderRadius: 99,
+                  padding: '10px 14px',
+                  fontSize: 13,
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                }}
+              >
+                🎖️ 飾品一覽
+              </button>
+
+              <button
+                onClick={() => {
+                  setInspectedSeedlingId(null);
+                  onOpenMap();
+                }}
+                style={{
+                  border: '1.5px solid #E2E8F0',
+                  background: '#FFFFFF',
+                  color: '#334155',
+                  borderRadius: 99,
+                  padding: '10px 18px',
+                  fontSize: 13,
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                }}
+              >
+                🗺️ 地圖
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== 額外欄位卡片（一般欄位 ＆ 金黃加速+25%欄位） ==================== */}
       {isExtraDrawerOpen && (
         <div
           onClick={() => setIsExtraDrawerOpen(false)}
@@ -934,7 +1641,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               textAlign: 'center'
             }}
           >
-            {/* 雙道具切換展示區：主選中大圖 ＋ 另一款旁側小圖 */}
             <div
               style={{
                 width: '100%',
@@ -946,9 +1652,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               }}
             >
               <button
-                onClick={() =>
-                  setSelectedExtraType((t) => (t === 'standard' ? 'standard' : 'standard'))
-                }
+                onClick={() => setSelectedExtraType('standard')}
                 style={{
                   border: 'none',
                   background: 'transparent',
@@ -1019,7 +1723,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               </button>
             </div>
 
-            {/* 使用按鈕 ＋ 說明文案 */}
             <div>
               <button
                 onClick={() => {
@@ -1074,7 +1777,6 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               </div>
             </div>
 
-            {/* 左下返回鈕 < */}
             <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-start' }}>
               <button
                 onClick={() => setIsExtraDrawerOpen(false)}

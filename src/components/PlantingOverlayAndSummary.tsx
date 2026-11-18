@@ -54,7 +54,7 @@ export const PlantingMapHudOverlay: React.FC<{
         <div
           style={{
             position: 'absolute',
-            top: 'max(14px, env(safe-area-inset-top))',
+            top: 'var(--top-safe-hud)',
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 520,

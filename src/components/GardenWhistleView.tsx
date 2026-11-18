@@ -6,6 +6,7 @@ import {
   VARIETY_CATALOG
 } from '../types/game';
 import { DeGuaCharacter } from './DeGuaCharacter';
+import { LushFlowerMeadowBackdrop } from './LushFlowerMeadowBackdrop';
 
 export interface MeadowFruitDrop {
   id: string;
@@ -156,26 +157,6 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
   const gatherTimerRef = useRef<number | null>(null);
   const singleWhistleTimerRef = useRef<number | null>(null);
   const pluckLockRef = useRef<Record<string, number>>({});
-
-  const meadowBlossoms = useMemo(
-    () => [
-      { x: 10, y: 12, c: '#FFFFFF', s: 0.9 },
-      { x: 24, y: 8, c: '#FACC15', s: 0.85 },
-      { x: 48, y: 11, c: '#93C5FD', s: 0.95 },
-      { x: 74, y: 14, c: '#FB7185', s: 0.9 },
-      { x: 90, y: 9, c: '#FFFFFF', s: 0.85 },
-      { x: 14, y: 26, c: '#C4B5FD', s: 1.0 },
-      { x: 64, y: 24, c: '#FDE047', s: 0.95 },
-      { x: 86, y: 32, c: '#FFFFFF', s: 1.05 },
-      { x: 18, y: 52, c: '#FACC15', s: 1.1 },
-      { x: 80, y: 54, c: '#FB7185', s: 1.05 },
-      { x: 24, y: 74, c: '#FFFFFF', s: 1.15 },
-      { x: 52, y: 72, c: '#93C5FD', s: 1.1 },
-      { x: 76, y: 82, c: '#FDE047', s: 1.2 },
-      { x: 12, y: 86, c: '#FB7185', s: 1.15 }
-    ],
-    []
-  );
 
   // 初始化＆持續更新每隻地瓜球在花草原上的漫步位置
   useEffect(() => {
@@ -425,45 +406,14 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
         touchAction: 'none'
       }}
     >
-      {/* 陽光柔焦與草地背景裝飾花朵 */}
+      {/* 陽光百花草原動態背景（遠近花叢與草簇隨風搖曳） */}
+      <LushFlowerMeadowBackdrop variant="garden" animateBurst={isGathered} />
+
+      {/* 頂部左右懸浮玻璃膠囊（使用 --top-safe-hud 避開 iOS 頂部模糊區） */}
       <div
         style={{
           position: 'absolute',
-          inset: 0,
-          background:
-            'radial-gradient(circle at 50% 34%, rgba(254,249,195,0.34) 0%, rgba(254,249,195,0) 62%)',
-          pointerEvents: 'none'
-        }}
-      />
-
-      {meadowBlossoms.map((b, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            left: `${b.x}%`,
-            top: `${b.y}%`,
-            transform: `translate(-50%, -50%) scale(${b.s})`,
-            pointerEvents: 'none',
-            opacity: 0.9
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 26 26">
-            <circle cx="13" cy="6" r="4.5" fill={b.c} />
-            <circle cx="19" cy="11" r="4.5" fill={b.c} />
-            <circle cx="17" cy="18" r="4.5" fill={b.c} />
-            <circle cx="9" cy="18" r="4.5" fill={b.c} />
-            <circle cx="7" cy="11" r="4.5" fill={b.c} />
-            <circle cx="13" cy="13" r="3.2" fill="#FACC15" />
-          </svg>
-        </div>
-      ))}
-
-      {/* 頂部左右懸浮玻璃膠囊（完全對照皮克敏：左上小型按鈕、右上金幣膠囊、移除冗餘返回主畫面按鈕） */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 'max(14px, env(safe-area-inset-top))',
+          top: 'var(--top-safe-hud)',
           left: 16,
           right: 16,
           zIndex: 30,
@@ -496,24 +446,6 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
           🌿
         </button>
 
-        {totalFruitPending > 0 && (
-          <div
-            style={{
-              background: 'rgba(15, 23, 42, 0.34)',
-              backdropFilter: 'blur(8px)',
-              color: '#FEF9C3',
-              padding: '5px 12px',
-              borderRadius: 99,
-              fontSize: 11.5,
-              fontWeight: 900,
-              border: '1px solid rgba(255,255,255,0.35)',
-              boxShadow: '0 4px 10px rgba(0,0,0,0.15)'
-            }}
-          >
-            🍎 草原有 {totalFruitPending} 顆果實，點兩下口哨一次收！
-          </div>
-        )}
-
         <div
           style={{
             pointerEvents: 'auto',
@@ -535,6 +467,31 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
           <span>{coins}</span>
         </div>
       </div>
+
+      {totalFruitPending > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(var(--top-safe-hud) + 50px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 28,
+            background: 'rgba(15, 23, 42, 0.36)',
+            backdropFilter: 'blur(8px)',
+            color: '#FEF9C3',
+            padding: '5px 14px',
+            borderRadius: 99,
+            fontSize: 11.5,
+            fontWeight: 900,
+            border: '1px solid rgba(255,255,255,0.35)',
+            boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none'
+          }}
+        >
+          🍎 草原有 {totalFruitPending} 顆果實，點兩下口哨一次收！
+        </div>
+      )}
 
       {/* 口哨集合波紋動畫 */}
       {whistlePulseCount > 0 && (

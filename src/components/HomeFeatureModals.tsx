@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import {
+  ALL_DECOR_CATEGORIES,
   DecorCategory,
   DECOR_CATALOG,
+  DECOR_SUBSETS_CATALOG,
   DeGuaCreature,
   DeGuaVariety,
   MIN_SQUAD_BY_MUSHROOM_SIZE,
@@ -16,15 +18,6 @@ import { DeGuaCharacter } from './DeGuaCharacter';
 import { buildAuthenticPikminMushroomSvg } from './PikminMushroomVisual';
 
 const ALL_VARIETIES: DeGuaVariety[] = ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'];
-const ALL_DECORS: DecorCategory[] = [
-  'bubble_tea',
-  'convenience',
-  'bakery',
-  'park',
-  'station',
-  'night_market',
-  'roadside'
-];
 
 /* ==================== 共通頂部返回主畫面標題列 ==================== */
 const ModalHeader: React.FC<{ title: string; subtitle?: string; onClose: () => void }> = ({
@@ -108,8 +101,9 @@ export const DecorCollectionModal: React.FC<{
         />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
-          {ALL_DECORS.map((decorKey) => {
+          {ALL_DECOR_CATEGORIES.map((decorKey) => {
             const dMeta = DECOR_CATALOG[decorKey];
+            const sets = DECOR_SUBSETS_CATALOG[decorKey] || [];
             return (
               <div
                 key={decorKey}
@@ -124,39 +118,58 @@ export const DecorCollectionModal: React.FC<{
                   <div style={{ fontSize: 14, fontWeight: 900, color: '#78350F' }}>
                     {dMeta.icon} {dMeta.placeCategory} — 【{dMeta.name}】
                   </div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#B45309' }}>
+                    {sets.length} 系列
+                  </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
-                  {ALL_VARIETIES.map((v) => {
-                    const unlocked = decoratedCreatures.some(
-                      (c) => c.decor === decorKey && c.variety === v
-                    );
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {sets.map((subSet) => {
+                    const setVarieties = subSet.varieties || ALL_VARIETIES;
                     return (
-                      <div
-                        key={v}
-                        style={{
-                          background: unlocked ? '#FEF3C7' : '#F1F5F9',
-                          border: unlocked ? '2px solid #F59E0B' : '1px dashed #CBD5E1',
-                          borderRadius: 14,
-                          padding: '6px 2px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          opacity: unlocked ? 1 : 0.42
-                        }}
-                      >
-                        <DeGuaCharacter
-                          variety={v}
-                          decor={decorKey}
-                          leafStage="flower"
-                          flowerColor="yellow"
-                          showDecor={unlocked}
-                          isBouncing={false}
-                          size={38}
-                        />
-                        <span style={{ fontSize: 9, fontWeight: 800, color: '#334155', marginTop: 2 }}>
-                          {unlocked ? '已收集' : '未發現'}
-                        </span>
+                      <div key={subSet.setId}>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: subSet.isRare ? '#D97706' : '#64748B', marginBottom: 6, textAlign: 'center' }}>
+                          {subSet.emoji} {subSet.setName}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                          {setVarieties.map((v) => {
+                            const unlocked = decoratedCreatures.some(
+                              (c) =>
+                                c.decor === decorKey &&
+                                c.variety === v &&
+                                (!c.decorSetId || c.decorSetId === subSet.setId || !subSet.isRare)
+                            );
+                            return (
+                              <div
+                                key={`${subSet.setId}_${v}`}
+                                style={{
+                                  background: unlocked ? '#FEF3C7' : '#F8FAFC',
+                                  border: unlocked ? '1.5px solid #F59E0B' : '1px dashed #CBD5E1',
+                                  borderRadius: 14,
+                                  padding: '6px 2px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  filter: unlocked ? 'none' : 'grayscale(1)',
+                                  opacity: unlocked ? 1 : 0.34
+                                }}
+                              >
+                                <DeGuaCharacter
+                                  variety={v}
+                                  decor={decorKey}
+                                  leafStage="flower"
+                                  flowerColor="yellow"
+                                  showDecor={true}
+                                  isBouncing={false}
+                                  size={36}
+                                />
+                                <span style={{ fontSize: 9, fontWeight: 800, color: '#334155', marginTop: 2 }}>
+                                  {VARIETY_CATALOG[v].name}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     );
                   })}

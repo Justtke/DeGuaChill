@@ -3,6 +3,11 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+:root {
+  /* Clears iOS 26 Standalone WebApp ~95px top status/pocket blur cleanly on Dynamic Island iPhones while staying compact on non-notch screens */
+  --top-safe-hud: calc(env(safe-area-inset-top, 0px) * 1.45 + 14px);
+}
+
 html, body, #root {
   margin: 0;
   padding: 0;
@@ -263,4 +268,93 @@ html, body, #root {
   transform-box: fill-box;
   transform-origin: center;
   animation: poisonMistSwirlB 3.9s ease-in-out infinite;
+}
+
+@keyframes meadowSway {
+  0%, 100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes meadowFloatPetal {
+  0% {
+    transform: translate(0px, 0px) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.9;
+  }
+  80% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(18px, -46px) rotate(95deg);
+    opacity: 0;
+  }
+}
+
+@keyframes deguaSteamRise {
+  0% {
+    transform: translateY(4px) scale(0.8);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(-28px) scale(1.35);
+    opacity: 0;
+  }
+}
+
+@keyframes deguaOilBubble {
+  0% {
+    transform: translateY(0px) scale(0.6);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(-8px) scale(1.25);
+    opacity: 0;
+  }
+}
+
+@keyframes deguaSizzleBob {
+  0%, 100% {
+    transform: translateY(0px) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-2.5px) rotate(1.5deg);
+  }
+}
+
+@keyframes deguaRoamPace {
+  0%, 100% {
+    transform: translate(0px, 0px);
+  }
+  25% {
+    transform: translate(-8px, -4px);
+  }
+  50% {
+    transform: translate(2px, 1px);
+  }
+  75% {
+    transform: translate(9px, -3px);
+  }
+}
+
+.meadow-sway {
+  transform-origin: center bottom;
+  animation: meadowSway 3.4s ease-in-out infinite;
+}
+
+.meadow-sway-slow {
+  transform-origin: center bottom;
+  animation: meadowSway 4.6s ease-in-out infinite reverse;
+}
+
+.meadow-float-petal {
+  animation: meadowFloatPetal 4.2s ease-in-out infinite;
 }

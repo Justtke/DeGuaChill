@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   DecorCategory,
+  DECOR_CATALOG,
   DeGuaVariety,
   LeafStage,
   PetalColor,
@@ -272,6 +273,12 @@ export const DeGuaCharacter: React.FC<DeGuaCharacterProps> = ({
               <g transform="translate(76, 94) rotate(-10)">
                 <circle cx="0" cy="0" r="11" fill="#22C55E" stroke="#15803D" strokeWidth="1.8" />
                 <text x="0" y="3.5" fontSize="10" textAnchor="middle" fill="#FFFFFF" fontWeight="900">P</text>
+              </g>
+            )}
+            {!['bubble_tea', 'convenience', 'bakery', 'park', 'station', 'night_market', 'roadside'].includes(decor) && (
+              <g transform="translate(74, 48) rotate(12)">
+                <circle cx="0" cy="0" r="13" fill="#FFFBEB" stroke="#F59E0B" strokeWidth="2.2" />
+                <text x="0" y="4.5" fontSize="14" textAnchor="middle">{DECOR_CATALOG[decor].icon}</text>
               </g>
             )}
           </g>

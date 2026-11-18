@@ -353,14 +353,52 @@ export async function triggerDetectorScan(
         let decor: DecorCategory = 'roadside';
         if (tags.amenity === 'cafe' || /茶|飲|咖啡|50嵐|清心|迷客夏|路易莎|星巴克/i.test(name)) {
           decor = 'bubble_tea';
-        } else if (tags.shop === 'convenience' || /7-ELEVEN|全家|萊爾富|OK/i.test(name)) {
+        } else if (tags.shop === 'convenience' || /7-ELEVEN|全家|萊爾富|OK超商/i.test(name)) {
           decor = 'convenience';
-        } else if (tags.shop === 'bakery' || /麵包|烘焙|甜點/i.test(name)) {
+        } else if (tags.shop === 'bakery' || /麵包|烘焙|法棍|可頌/i.test(name)) {
           decor = 'bakery';
+        } else if (/甜點|蛋糕|馬卡龍|甜甜圈|pastry|dessert/i.test(name) || tags.shop === 'pastry') {
+          decor = 'dessert';
+        } else if (/拉麵|ramen|豚骨/i.test(name)) {
+          decor = 'ramen';
+        } else if (/壽司|sushi|爭鮮|藏壽司/i.test(name)) {
+          decor = 'sushi';
+        } else if (/咖哩|curry/i.test(name)) {
+          decor = 'curry';
+        } else if (/漢堡|麥當勞|摩斯|burger/i.test(name)) {
+          decor = 'hamburger';
+        } else if (tags.shop === 'supermarket' || /全聯|家樂福|大潤發|超市/i.test(name)) {
+          decor = 'supermarket';
+        } else if (tags.amenity === 'pharmacy' || /藥局|屈臣氏|康是美/i.test(name)) {
+          decor = 'pharmacy';
+        } else if (tags.amenity === 'post_office' || /郵局/i.test(name)) {
+          decor = 'post_office';
+        } else if (tags.shop === 'hairdresser' || /美髮|髮廊|理髮|小林|曼都/i.test(name)) {
+          decor = 'hair_salon';
+        } else if (tags.shop === 'clothes' || /服飾|UNIQLO|NET/i.test(name)) {
+          decor = 'clothing';
+        } else if (tags.shop === 'books' || tags.amenity === 'library' || /書店|圖書館|誠品/i.test(name)) {
+          decor = 'book';
+        } else if (tags.amenity === 'cinema' || /影城|電影|威秀|國賓/i.test(name)) {
+          decor = 'cinema';
+        } else if (tags.tourism === 'museum' || /美術館|博物館|展覽/i.test(name)) {
+          decor = 'art_gallery';
         } else if (tags.leisure === 'park' || /公園|綠地/i.test(name)) {
           decor = 'park';
-        } else if (tags.railway || /捷運|車站|站/i.test(name)) {
+        } else if (tags.natural === 'water' || tags.waterway || /河濱|水岸|湖|溪/i.test(name)) {
+          decor = 'waterside';
+        } else if (/森林|林蔭|植物園/i.test(name)) {
+          decor = 'forest';
+        } else if (/山|步道|百岳/i.test(name)) {
+          decor = 'mountain';
+        } else if (/海邊|漁港|沙灘/i.test(name)) {
+          decor = 'beach';
+        } else if (tags.railway || /捷運|車站|高鐵|台鐵|站/i.test(name)) {
           decor = 'station';
+        } else if (tags.aeroway || /機場|航廈/i.test(name)) {
+          decor = 'airport';
+        } else if (/動物園/i.test(name)) {
+          decor = 'zoo';
         } else if (tags.amenity === 'restaurant' || /餐廳|夜市|小吃|麵|飯/i.test(name)) {
           decor = 'night_market';
         }

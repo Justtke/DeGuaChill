@@ -10,6 +10,7 @@ import {
 import { getPlantingFootprintForSquad } from '../services/flowerPlantingEngine';
 import { DeGuaCharacter } from './DeGuaCharacter';
 import { WalkingPlayerAvatar } from './WalkingPlayerAvatar';
+import { LushFlowerMeadowBackdrop } from './LushFlowerMeadowBackdrop';
 
 interface FlowerPlantingModalProps {
   activeVariantId: string;
@@ -384,29 +385,6 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
     }, 80);
   };
 
-  const fieldBlossoms = useMemo(
-    () => [
-      { x: 10, y: 18, c: '#FFFFFF', s: 1.05 },
-      { x: 24, y: 12, c: '#FACC15', s: 0.9 },
-      { x: 40, y: 16, c: '#FB7185', s: 1.0 },
-      { x: 58, y: 11, c: '#FFFFFF', s: 0.95 },
-      { x: 76, y: 15, c: '#93C5FD', s: 1.0 },
-      { x: 89, y: 21, c: '#FDE047', s: 0.9 },
-      { x: 14, y: 36, c: '#A78BFA', s: 1.1 },
-      { x: 30, y: 42, c: '#FFFFFF', s: 0.95 },
-      { x: 72, y: 38, c: '#FFFFFF', s: 1.05 },
-      { x: 86, y: 46, c: '#FB7185', s: 1.1 },
-      { x: 18, y: 66, c: '#FACC15', s: 1.15 },
-      { x: 36, y: 74, c: '#93C5FD', s: 1.05 },
-      { x: 64, y: 72, c: '#FFFFFF', s: 1.15 },
-      { x: 82, y: 76, c: '#FDE047', s: 1.05 },
-      { x: 22, y: 86, c: '#FFFFFF', s: 1.2 },
-      { x: 50, y: 88, c: '#FB7185', s: 1.1 },
-      { x: 76, y: 86, c: '#A78BFA', s: 1.2 }
-    ],
-    []
-  );
-
   return (
     <div
       style={{
@@ -426,14 +404,12 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
         userSelect: 'none'
       }}
     >
-      {/* ==================== 上半部：百花草原與主角高舉花瓣瓶 ==================== */}
+      {/* ==================== 上半部：會動的百花草原、飄舞花瓣與主角腳邊跑動的夥伴 ==================== */}
       <div
         style={{
           position: 'absolute',
           inset: '0 0 auto 0',
           height: `${100 - sheetHeightPct + 8}%`,
-          background:
-            'radial-gradient(circle at 50% 42%, #74C365 0%, #58B044 58%, #3F8F2F 100%)',
           overflow: 'hidden',
           display: 'flex',
           alignItems: 'center',
@@ -441,33 +417,12 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
           transition: dragRef.current.active ? 'none' : 'height 0.25s cubic-bezier(0.22, 1, 0.36, 1)'
         }}
       >
-        {fieldBlossoms.map((b, i) => (
-          <div
-            key={i}
-            style={{
-              position: 'absolute',
-              left: `${b.x}%`,
-              top: `${b.y}%`,
-              transform: `translate(-50%, -50%) scale(${b.s})`,
-              pointerEvents: 'none',
-              opacity: 0.92
-            }}
-          >
-            <svg width="26" height="26" viewBox="0 0 26 26">
-              <circle cx="13" cy="6" r="4.5" fill={b.c} />
-              <circle cx="19" cy="11" r="4.5" fill={b.c} />
-              <circle cx="17" cy="18" r="4.5" fill={b.c} />
-              <circle cx="9" cy="18" r="4.5" fill={b.c} />
-              <circle cx="7" cy="11" r="4.5" fill={b.c} />
-              <circle cx="13" cy="13" r="3.2" fill="#FACC15" />
-            </svg>
-          </div>
-        ))}
+        <LushFlowerMeadowBackdrop variant="planting" animateBurst={isPlanting} />
 
         <div
           style={{
             position: 'absolute',
-            top: 'max(14px, env(safe-area-inset-top))',
+            top: 'var(--top-safe-hud)',
             left: 14,
             width: 38,
             height: 38,
@@ -478,7 +433,8 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 18,
-            backdropFilter: 'blur(4px)'
+            backdropFilter: 'blur(4px)',
+            zIndex: 10
           }}
         >
           ⛅
@@ -486,7 +442,7 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
         <div
           style={{
             position: 'absolute',
-            top: 'max(14px, env(safe-area-inset-top))',
+            top: 'var(--top-safe-hud)',
             right: 14,
             width: 38,
             height: 38,
@@ -497,7 +453,8 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: 18,
-            backdropFilter: 'blur(4px)'
+            backdropFilter: 'blur(4px)',
+            zIndex: 10
           }}
         >
           🧭
@@ -509,11 +466,12 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            marginTop: 14
+            marginTop: 28,
+            zIndex: 5
           }}
         >
           <div style={{ display: 'flex', alignItems: 'flex-end', position: 'relative' }}>
-            <WalkingPlayerAvatar height={76} isWalking={isPlanting} />
+            <WalkingPlayerAvatar height={78} isWalking={true} />
             <div style={{ marginLeft: -8, marginBottom: 24, transform: 'rotate(8deg)' }}>
               <GlassPetalJarSvg
                 color={activeVariant.color}
@@ -525,9 +483,16 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, marginTop: -22 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, marginTop: -20 }}>
             {squadCreatures.slice(0, 6).map((c, i) => (
-              <div key={c.id} style={{ transform: `translateY(${i % 2 === 0 ? 0 : -4}px)` }}>
+              <div
+                key={c.id}
+                style={{
+                  animation: `deguaRoamPace ${2.4 + (i % 3) * 0.45}s ease-in-out infinite`,
+                  animationDelay: `${i * 0.35}s`,
+                  marginTop: i % 2 === 0 ? 0 : -5
+                }}
+              >
                 <DeGuaCharacter
                   variety={c.variety}
                   decor={c.decor}
@@ -535,7 +500,7 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
                   flowerColor={c.flowerColor}
                   showDecor={c.hasDecor}
                   size={30}
-                  isBouncing={isPlanting}
+                  isBouncing={true}
                 />
               </div>
             ))}
