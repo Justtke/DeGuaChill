@@ -1,0 +1,99 @@
+name: Build iPhone IPA (SideStore / AltStore Ready)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies & Build Web Assets
+        run: |
+          npm install
+          npm run build
+
+      - name: Generate Capacitor iOS Project & Inject Native Background Engine
+        run: |
+          npx cap add ios
+          npx cap sync ios
+
+          # 使用 python3 將 DeGuaBackgroundManager 原生背景引擎與頂端 import 安全注入 AppDelegate.swift
+          python3 - << 'PY'
+          from pathlib import Path
+
+          app_delegate_path = Path("ios/App/App/AppDelegate.swift")
+          bg_mgr_path = Path("ios-native/DeGuaBackgroundManager.swift")
+
+          app_src = app_delegate_path.read_text(encoding="utf-8")
+          bg_lines = bg_mgr_path.read_text(encoding="utf-8").splitlines()
+
+          extra_imports = [line.strip() for line in bg_lines if line.strip().startswith("import ")]
+          body_lines = [line for line in bg_lines if not line.strip().startswith("import ")]
+
+          existing_imports = set()
+          for line in app_src.splitlines():
+              if line.strip().startswith("import "):
+                  existing_imports.add(line.strip())
+
+          imports_to_add = [imp for imp in extra_imports if imp not in existing_imports]
+          if imports_to_add:
+              app_src = "\n".join(imports_to_add) + "\n" + app_src
+
+          target_hook = "func applicationDidBecomeActive(_ application: UIApplication) {"
+          assert target_hook in app_src, f"Anchor not found in AppDelegate.swift"
+          attach_stmt = (
+              target_hook
+              + "\n        if let rootVC = self.window?.rootViewController as? CAPBridgeViewController, let wv = rootVC.webView { DeGuaBackgroundManager.shared.attach(to: wv) }"
+          )
+          app_src = app_src.replace(target_hook, attach_stmt, 1)
+
+          combined = app_src.rstrip() + "\n\n// MARK: - DeGuaBackgroundManager\n" + "\n".join(body_lines) + "\n"
+          app_delegate_path.write_text(combined, encoding="utf-8")
+          print("Successfully injected DeGuaBackgroundManager into AppDelegate.swift")
+          PY
+
+          # 自動寫入 iOS Info.plist 背景定位與 CoreMotion 計步晶片權限說明 (支援免費 Apple ID)
+          PLIST="ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :NSMotionUsageDescription string '地瓜球需要讀取計步感測器，讓你在口袋走路時自動孵出地瓜球並跳出拔苗通知！'" "$PLIST" || /usr/libexec/PlistBuddy -c "Set :NSMotionUsageDescription '地瓜球需要讀取計步感測器，讓你在口袋走路時自動孵出地瓜球並跳出拔苗通知！'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string '地瓜球需要定位來讓你邊走邊在地圖上種花並掃描附近手搖店與夜市花苗！'" "$PLIST" || /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription '地瓜球需要定位來讓你邊走邊在地圖上種花並掃描附近手搖店與夜市花苗！'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSLocationAlwaysAndWhenInUseUsageDescription string '請選擇「永遠允許」，這樣關螢幕放口袋走路也能自動抓 GPS 種花並在花苗熟透時跳出通知！'" "$PLIST" || /usr/libexec/PlistBuddy -c "Set :NSLocationAlwaysAndWhenInUseUsageDescription '請選擇「永遠允許」，這樣關螢幕放口袋走路也能自動抓 GPS 種花並在花苗熟透時跳出通知！'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Delete :UIBackgroundModes" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string location" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:1 string fetch" "$PLIST"
+
+      - name: Build Unsigned iOS App via Xcode
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      - name: Package Payload into DeGuaChill.ipa
+        run: |
+          mkdir -p Payload
+          cp -r ios/App/build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -r DeGuaChill.ipa Payload
+
+      - name: Upload DeGuaChill.ipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeGuaChill-iOS-IPA
+          path: DeGuaChill.ipa

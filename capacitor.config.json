@@ -1,0 +1,10 @@
+{
+  "appId": "com.deguachill.app",
+  "appName": "地瓜球 DeGuaChill",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#FFFDF7"
+  }
+}

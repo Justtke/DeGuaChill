@@ -1,0 +1,258 @@
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: #ECFDF5;
+  color: #1E293B;
+  overflow: hidden;
+}
+
+/*
+ * 互動地圖底層真实 OSM 備援濾鏡（在 Overpass 真實向量街廓載入前的 0.5 秒內提供即時真實街道）
+ */
+.pikmin-clean-street-map {
+  background: #5CAE50 !important;
+}
+
+.pikmin-clean-street-map .osm-base-raster-tile {
+  filter: sepia(0.34) hue-rotate(52deg) saturate(2.2) brightness(0.95) contrast(1.1);
+}
+
+/* 主畫面上方「今日真實位置與足跡概覽地圖」容器 */
+.pikmin-mini-footprint-map {
+  background: #5CAE50 !important;
+}
+
+@keyframes walkerBodyBob {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-3.5px);
+  }
+}
+
+@keyframes walkerLegLeft {
+  0%, 100% {
+    transform: rotate(-16deg);
+  }
+  50% {
+    transform: rotate(16deg);
+  }
+}
+
+@keyframes walkerLegRight {
+  0%, 100% {
+    transform: rotate(16deg);
+  }
+  50% {
+    transform: rotate(-16deg);
+  }
+}
+
+.pikmin-walker-body {
+  animation: walkerBodyBob 0.65s ease-in-out infinite;
+}
+
+.pikmin-walker-leg-l {
+  transform-origin: 23px 54px;
+  animation: walkerLegLeft 0.65s ease-in-out infinite;
+}
+
+.pikmin-walker-leg-r {
+  transform-origin: 33px 54px;
+  animation: walkerLegRight 0.65s ease-in-out infinite;
+}
+
+@keyframes deguaBounce {
+  0%, 100% {
+    transform: translateY(0px) scale(1, 1);
+  }
+  45% {
+    transform: translateY(-7px) scale(0.96, 1.05);
+  }
+  75% {
+    transform: translateY(1px) scale(1.04, 0.96);
+  }
+}
+
+.degua-bounce {
+  animation: deguaBounce 2s ease-in-out infinite;
+}
+
+@keyframes flowerPulse {
+  0%, 100% {
+    transform: translate(0, -22px) scale(1);
+  }
+  50% {
+    transform: translate(0, -24px) scale(1.15);
+  }
+}
+
+.flower-glow {
+  animation: flowerPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes readyShake {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-3deg) scale(1.03); }
+  75% { transform: rotate(3deg) scale(1.03); }
+}
+
+.seedling-ready-card {
+  animation: readyShake 1.2s ease-in-out infinite;
+}
+
+@keyframes floatUpPetal {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-65px) scale(1.25);
+  }
+}
+
+.pikmin-app-shell {
+  width: 100%;
+  height: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: #F8FAFC;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+/* ==================== 元素蘑菇詳情特寫動畫（點進去時的專屬包圍特效；水晶菇維持靜止無動畫） ==================== */
+@keyframes fireFlameDance {
+  0% {
+    transform: translateY(0px) scaleY(1) scaleX(1);
+    opacity: 0.88;
+  }
+  50% {
+    transform: translateY(-4px) scaleY(1.08) scaleX(0.97);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-2px) scaleY(1.03) scaleX(1.03);
+    opacity: 0.92;
+  }
+}
+
+@keyframes fireEmberRise {
+  0% {
+    transform: translateY(0px) scale(0.9);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translateY(-28px) scale(0.35);
+    opacity: 0;
+  }
+}
+
+@keyframes electricBoltSnapA {
+  0%, 18%, 42%, 68%, 100% {
+    opacity: 0.12;
+  }
+  6%, 12%, 48%, 54%, 76% {
+    opacity: 1;
+  }
+}
+
+@keyframes electricBoltSnapB {
+  0%, 28%, 58%, 85%, 100% {
+    opacity: 0.08;
+  }
+  18%, 35%, 66%, 92% {
+    opacity: 1;
+  }
+}
+
+@keyframes waterBubbleFloat {
+  0%, 100% {
+    transform: translateY(0px) scale(1, 1);
+  }
+  50% {
+    transform: translateY(-4.5px) scale(1.02, 0.985);
+  }
+}
+
+@keyframes poisonMistSwirlA {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.62;
+  }
+  50% {
+    transform: translate(6px, -4px) scale(1.1);
+    opacity: 0.85;
+  }
+}
+
+@keyframes poisonMistSwirlB {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1.05);
+    opacity: 0.72;
+  }
+  50% {
+    transform: translate(-6px, -3px) scale(0.96);
+    opacity: 0.48;
+  }
+}
+
+.mush-anim-fire {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: fireFlameDance 0.95s ease-in-out infinite alternate;
+}
+
+.mush-anim-ember-1 {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fireEmberRise 1.6s ease-out infinite;
+}
+
+.mush-anim-ember-2 {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fireEmberRise 1.6s ease-out 0.75s infinite;
+}
+
+.mush-anim-elec-a {
+  animation: electricBoltSnapA 1.15s linear infinite;
+}
+
+.mush-anim-elec-b {
+  animation: electricBoltSnapB 1.05s linear infinite;
+}
+
+.mush-anim-water-float {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: waterBubbleFloat 2.6s ease-in-out infinite;
+}
+
+.mush-anim-poison-a {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: poisonMistSwirlA 3.4s ease-in-out infinite;
+}
+
+.mush-anim-poison-b {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: poisonMistSwirlB 3.9s ease-in-out infinite;
+}
