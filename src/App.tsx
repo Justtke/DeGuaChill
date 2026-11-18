@@ -780,11 +780,17 @@ export const App: React.FC = () => {
     }
   };
 
-  // 直接向本機 Windows WinRT Geolocator 讀取系統定位服務與「預設位置 (DefaultGeoposition)」
+  // 直接向本機 Windows WinRT Geolocator 讀取系統定位服務與「預設位置 (DefaultGeoposition)」（僅限本機桌面瀏覽器，手機端一律走自身 GPS）
   const fetchWindowsNativeLocation = async (
     notify = false,
     forceRecenter = false
   ): Promise<boolean> => {
+    const isDesktopLocalhost =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+      !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (!isDesktopLocalhost) return false;
+
     try {
       const res = await fetch('/api/windows-location');
       if (!res.ok) return false;
