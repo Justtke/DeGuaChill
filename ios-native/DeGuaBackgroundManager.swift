@@ -50,6 +50,24 @@ import WebKit
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "DeGuaNative")
         webView.configuration.userContentController.add(self, name: "DeGuaNative")
         startHardwareStepTracking()
+        requestNativeSingleLocationIfAuthorized()
+    }
+
+    private func currentLocationAuthorizationStatus() -> CLAuthorizationStatus {
+        if #available(iOS 14.0, *) {
+            return locationManager.authorizationStatus
+        }
+        return CLLocationManager.authorizationStatus()
+    }
+
+    private func requestNativeSingleLocationIfAuthorized() {
+        let status = currentLocationAuthorizationStatus()
+        if status == .authorizedAlways || status == .authorizedWhenInUse {
+            locationManager.requestLocation()
+            if CLLocationManager.significantLocationChangeMonitoringAvailable() {
+                locationManager.startMonitoringSignificantLocationChanges()
+            }
+        }
     }
 
     private func setupLocationManager() {
@@ -63,12 +81,46 @@ import WebKit
 
     public func requestPermissions() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
-        locationManager.requestAlwaysAuthorization()
+        let status = currentLocationAuthorizationStatus()
+        if status == .notDetermined {
+            locationManager.requestWhenInUseAuthorization()
+        } else {
+            if status == .authorizedWhenInUse {
+                locationManager.requestAlwaysAuthorization()
+            }
+            requestNativeSingleLocationIfAuthorized()
+        }
         // 啟動背景街區移動喚醒（即使未開啟種花，走動時 iOS 也會在背景喚醒本引擎檢查 CMPedometer 步數）
         if CLLocationManager.significantLocationChangeMonitoringAvailable() {
             locationManager.startMonitoringSignificantLocationChanges()
         }
         startHardwareStepTracking()
+    }
+
+    public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = currentLocationAuthorizationStatus()
+        if status == .authorizedWhenInUse {
+            locationManager.requestLocation()
+            locationManager.requestAlwaysAuthorization()
+        } else if status == .authorizedAlways {
+            locationManager.requestLocation()
+            if CLLocationManager.significantLocationChangeMonitoringAvailable() {
+                locationManager.startMonitoringSignificantLocationChanges()
+            }
+        }
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        if status == .authorizedWhenInUse {
+            locationManager.requestLocation()
+            locationManager.requestAlwaysAuthorization()
+        } else if status == .authorizedAlways {
+            locationManager.requestLocation()
+        }
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        // Ignore transient CLError location lookup errors gracefully
     }
 
     // MARK: - CMPedometer 硬體計步監聽（不開畫面也能在背景算步數並跳通知）
@@ -114,8 +166,8 @@ import WebKit
                     // 步數達標！即使手機鎖螢幕在口袋裡，直接觸發 iPhone 本地推播通知！
                     fireNativeNotification(
                         id: "seedling_ready_\(activeSeedlings[i].id)",
-                        title: "🍠 地瓜球苗熟透可以拔囉！",
-                        body: "在「\(activeSeedlings[i].placeName)」發現的【\(activeSeedlings[i].title)】已經走滿 \(activeSeedlings[i].targetSteps) 步，快打開油鍋夾起來！"
+                        title: "🍠 瓜糰已經炸熟囉！",
+                        body: "在「\(activeSeedlings[i].placeName)」發現的【\(activeSeedlings[i].title)】已經走滿 \(activeSeedlings[i].targetSteps) 步，快打開油鍋用網勺撈起來！"
                     )
                 }
             }
@@ -243,6 +295,14 @@ import WebKit
         switch action {
         case "requestPermissions":
             requestPermissions()
+
+        case "requestLocation":
+            let status = currentLocationAuthorizationStatus()
+            if status == .notDetermined {
+                requestPermissions()
+            } else {
+                requestNativeSingleLocationIfAuthorized()
+            }
 
         case "fireLocalNotification":
             let id = (body["id"] as? String) ?? UUID().uuidString

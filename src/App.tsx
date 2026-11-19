@@ -22,7 +22,9 @@ import {
   VARIETY_CATALOG
 } from './types/game';
 import {
+  isRunningInsideIosNative,
   requestAllPermissions,
+  requestNativeLocation,
   setNativeBackgroundPlanting,
   syncSeedlingsToNative,
   triggerSeedlingReadyNotification
@@ -77,7 +79,9 @@ import {
   FriendsAndWorldModal,
   MushroomGuideModal,
   NotificationsModal,
+  PostcardsModal,
   ProfileAndMenuModal,
+  SettingsModal,
   ShopModal
 } from './components/HomeFeatureModals';
 
@@ -530,7 +534,7 @@ export const App: React.FC = () => {
     return raw ? (JSON.parse(raw) as PostcardItem[]) : [];
   });
   const [activityLogs, setActivityLogs] = useState<string[]>([
-    '🍠 歡迎來到地瓜球 DeGuaChill！帶著手機散步就能自動油炸瓜糰與種花！',
+    '🍠 歡迎來到地瓜球！帶著手機散步就能自動油炸瓜糰與種花！',
     '🧋 在「巷口 50嵐手搖飲」附近發現了紅色瓜糰！',
     '🍄 世界地圖上的蘑菇與大花已與共同世界同步！'
   ]);
@@ -548,6 +552,8 @@ export const App: React.FC = () => {
   const [isLifelogModalOpen, setIsLifelogModalOpen] = useState<boolean>(false);
   const [isShopModalOpen, setIsShopModalOpen] = useState<boolean>(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
+  const [isPostcardsModalOpen, setIsPostcardsModalOpen] = useState<boolean>(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isGardenOpen, setIsGardenOpen] = useState<boolean>(false);
   const [isPlanterOpen, setIsPlanterOpen] = useState<boolean>(false);
   const [isExpeditionsOpen, setIsExpeditionsOpen] = useState<boolean>(false);
@@ -766,11 +772,25 @@ export const App: React.FC = () => {
         });
       },
       onNativeLocationUpdate: (lat: number, lng: number) => {
-        setMyLat(lat);
-        setMyLng(lng);
+        applyVerifiedLocation(lat, lng, undefined, !hasInitialFixRef.current);
       }
     };
   });
+
+  // 僅於「Safari 加入主畫面 Standalone PWA（非原生 IPA）」時加高頂部避讓模糊帶；原生 Capacitor IPA 直接貼齊安全區匹配皮克敏緊湊感
+  useEffect(() => {
+    const isNativeCap =
+      isRunningInsideIosNative() ||
+      Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
+    const isSafariStandalonePwa =
+      !isNativeCap && Boolean((window.navigator as unknown as { standalone?: boolean }).standalone);
+    if (isSafariStandalonePwa) {
+      document.documentElement.style.setProperty(
+        '--top-safe-hud',
+        'calc(env(safe-area-inset-top, 0px) * 1.45 + 14px)'
+      );
+    }
+  }, []);
 
   const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
   const [locationQuery, setLocationQuery] = useState<string>('');
@@ -865,11 +885,18 @@ export const App: React.FC = () => {
   };
 
   const requestAndApplyRealLocation = async (notify = false, forceRecenter = false) => {
+    // 0. 若運行於 iOS 原生 Capacitor App 內，一律走 Swift 原生 CLLocationManager，絕不呼叫 WebView navigator.geolocation（避免跳出 "localhost" 要求位置彈窗！）
+    if (isRunningInsideIosNative()) {
+      requestNativeLocation();
+      if (forceRecenter) setRecenterSeq((s) => s + 1);
+      return;
+    }
+
     // 1. 優先向本機 Windows WinRT 橋接層讀取「Windows 定位服務 / 預設位置」
     const winOk = await fetchWindowsNativeLocation(notify, forceRecenter);
     if (winOk) return;
 
-    // 2. 透過標準瀏覽器 Geolocation API 讀取 (iPhone / 筆電 GPS)
+    // 2. 透過標準瀏覽器 Geolocation API 讀取 (網頁預覽 / 筆電 GPS)
     if (!('geolocation' in navigator)) return;
 
     navigator.geolocation.getCurrentPosition(
@@ -901,9 +928,15 @@ export const App: React.FC = () => {
     );
   };
 
-  // 仿照皮克敏標準做法：啟動時取得初始定位，之後僅在「使用者實際移動超過 5 公尺 (watchPosition)」或「從系統設定切回視窗」時靜默更新，不跳多餘定位通知！
+  // 仿照皮克敏標準做法：啟動時取得初始定位，之後僅在「使用者實際移動超過 5 公尺」或「從系統設定切回視窗」時靜默更新，原生 iOS 端改由 Swift CoreLocation 主動推座標！
   useEffect(() => {
     requestAndApplyRealLocation(false, false);
+
+    if (isRunningInsideIosNative()) {
+      const onNativeFocus = () => requestNativeLocation();
+      window.addEventListener('focus', onNativeFocus);
+      return () => window.removeEventListener('focus', onNativeFocus);
+    }
 
     const onWindowFocus = () => {
       if (!hasInitialFixRef.current) {
@@ -3050,33 +3083,48 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* 🧑‍🌾 個人資訊 / ☰ 主選單 */}
+      {/* ☰ 左下主選單（對照皮克敏圖五簡潔毛玻璃雙欄選單） */}
       {isProfileMenuOpen && (
         <ProfileAndMenuModal
           playerName={playerName}
           level={playerLevel}
-          todaySteps={todaySteps}
-          coins={coins}
-          creaturesCount={creatures.length}
-          petalJar={petalJar}
-          nectarJar={nectarJar}
-          privacyZone={privacyZone}
-          onChangePrivacyZone={(next) =>
-            setPrivacyZone({ ...next, lat: myLat, lng: myLng })
-          }
-          onChangePlayerName={setPlayerName}
-          onSimulateWalkSteps={(s) => addStepsAndCheckSeedlings(s)}
           onOpenSubModal={(target) => {
             setIsProfileMenuOpen(false);
             if (target === 'garden') setIsGardenOpen(true);
             if (target === 'planter') setIsPlanterOpen(true);
             if (target === 'expeditions') setIsExpeditionsOpen(true);
-            if (target === 'decor') setIsDecorModalOpen(true);
             if (target === 'friends') setIsFriendsModalOpen(true);
             if (target === 'shop') setIsShopModalOpen(true);
             if (target === 'guide') setIsGuideModalOpen(true);
+            if (target === 'postcards') setIsPostcardsModalOpen(true);
+            if (target === 'lifelog') setIsLifelogModalOpen(true);
+            if (target === 'settings') setIsSettingsModalOpen(true);
           }}
           onClose={() => setIsProfileMenuOpen(false)}
+        />
+      )}
+
+      {/* 🖼️ 明信片子頁面 */}
+      {isPostcardsModalOpen && (
+        <PostcardsModal
+          postcards={postcards}
+          onClose={() => setIsPostcardsModalOpen(false)}
+        />
+      )}
+
+      {/* ⚙️ 設定子頁面 */}
+      {isSettingsModalOpen && (
+        <SettingsModal
+          playerName={playerName}
+          level={playerLevel}
+          todaySteps={todaySteps}
+          coins={coins}
+          onChangePlayerName={setPlayerName}
+          onRequestPermissions={() => {
+            requestAllPermissions();
+            showToast('📍 已向 iPhone 請求最新定位與通知權限狀態！');
+          }}
+          onClose={() => setIsSettingsModalOpen(false)}
         />
       )}
 

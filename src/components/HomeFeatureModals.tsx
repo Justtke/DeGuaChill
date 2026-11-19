@@ -11,11 +11,11 @@ import {
   PetalColor,
   PETAL_META,
   PostcardItem,
-  PrivacyZoneSetting,
   VARIETY_CATALOG
 } from '../types/game';
 import { DeGuaCharacter } from './DeGuaCharacter';
 import { buildAuthenticPikminMushroomSvg } from './PikminMushroomVisual';
+import { WalkingPlayerAvatar } from './WalkingPlayerAvatar';
 
 const ALL_VARIETIES: DeGuaVariety[] = ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'];
 
@@ -384,7 +384,7 @@ export const NotificationsModal: React.FC<{
       >
         <ModalHeader
           title="📢 通知與活動公告"
-          subtitle="最新消息與散步拔苗紀錄"
+          subtitle="最新消息與散步起鍋紀錄"
           onClose={onClose}
         />
 
@@ -400,7 +400,7 @@ export const NotificationsModal: React.FC<{
             🎉 本月活動：台灣夜市與手搖飲飾品地瓜球登場！
           </div>
           <div style={{ fontSize: 12, color: '#475569', marginTop: 4, lineHeight: 1.5 }}>
-            散步時開啟「種花模式」可享花苗培育速度 1.2 倍加成！當 iPhone 放口袋走滿步數時，系統會在背景自動跳出通知提醒你拔出地瓜球！
+            散步時開啟「種花模式」可享瓜糰油炸速度 1.2 倍加成！當 iPhone 放口袋走滿步數時，系統會在背景自動跳出通知提醒你起鍋地瓜球！
           </div>
           <button
             onClick={onTestIosNotification}
@@ -417,7 +417,7 @@ export const NotificationsModal: React.FC<{
               cursor: 'pointer'
             }}
           >
-            🔔 授權 / 測試 iPhone 拔苗推播通知
+            🔔 授權 / 測試 iPhone 起鍋推播通知
           </button>
         </div>
 
@@ -713,36 +713,39 @@ export const ShopModal: React.FC<{
   );
 };
 
-/* ==================== 6. 🧑‍🌾 個人資訊與主選單 (Profile & Main Menu Modal) ==================== */
+/* ==================== 6. ☰ 主選單（完全對照皮克敏圖五簡潔毛玻璃雙欄卡片選單） ==================== */
+export type MainMenuSubTarget =
+  | 'shop'
+  | 'garden'
+  | 'planter'
+  | 'postcards'
+  | 'lifelog'
+  | 'expeditions'
+  | 'guide'
+  | 'friends'
+  | 'settings';
+
 export const ProfileAndMenuModal: React.FC<{
   playerName: string;
   level: number;
-  todaySteps: number;
-  coins: number;
-  creaturesCount: number;
-  petalJar: Record<PetalColor, number>;
-  nectarJar: Record<PetalColor, number>;
-  privacyZone?: PrivacyZoneSetting;
-  onChangePrivacyZone?: (next: PrivacyZoneSetting) => void;
-  onChangePlayerName: (v: string) => void;
-  onSimulateWalkSteps: (steps: number) => void;
-  onOpenSubModal: (target: 'decor' | 'friends' | 'planter' | 'expeditions' | 'garden' | 'shop' | 'guide') => void;
+  onOpenSubModal: (target: MainMenuSubTarget) => void;
   onClose: () => void;
-}> = ({
-  playerName,
-  level,
-  todaySteps,
-  coins,
-  creaturesCount,
-  petalJar,
-  nectarJar,
-  privacyZone,
-  onChangePrivacyZone,
-  onChangePlayerName,
-  onSimulateWalkSteps,
-  onOpenSubModal,
-  onClose
-}) => {
+}> = ({ playerName, level, onOpenSubModal, onClose }) => {
+  const menuCards: Array<{
+    key: MainMenuSubTarget;
+    label: string;
+    icon: React.ReactNode;
+  }> = [
+    { key: 'garden', label: '地瓜球', icon: '🍠' },
+    { key: 'planter', label: '瓜糰', icon: '🍯' },
+    { key: 'postcards', label: '明信片', icon: '🖼️' },
+    { key: 'lifelog', label: '每日紀錄', icon: '📔' },
+    { key: 'expeditions', label: '探險與蘑菇', icon: '🍄' },
+    { key: 'guide', label: '遊玩指南', icon: '📖' },
+    { key: 'friends', label: '好友與世界', icon: '👥' },
+    { key: 'settings', label: '設定', icon: '⚙️' }
+  ];
+
   return (
     <div
       onClick={onClose}
@@ -750,249 +753,330 @@ export const ProfileAndMenuModal: React.FC<{
         position: 'fixed',
         inset: 0,
         zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.55)',
+        background: 'rgba(15, 23, 42, 0.24)',
+        backdropFilter: 'blur(18px)',
+        WebkitBackdropFilter: 'blur(18px)',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'flex-end'
+        justifyContent: 'flex-end',
+        padding: '0 16px calc(max(24px, env(safe-area-inset-bottom)) + 74px)'
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#F8FAFC',
-          borderRadius: '32px 32px 0 0',
-          height: '86%',
-          padding: '20px 18px 28px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 14,
-          overflowY: 'auto'
+          width: '100%',
+          maxWidth: 460,
+          margin: '0 auto',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 10
         }}
       >
-        <ModalHeader
-          title="🧑‍🌾 個人資訊與主選單"
-          subtitle={`Lv.${level} ・ 總地瓜球夥伴 ${creaturesCount} 隻`}
-          onClose={onClose}
-        />
-
-        {/* 玩家名片卡 */}
-        <div
+        {/* 玩家名片（對照圖五左一） */}
+        <button
+          onClick={() => onOpenSubModal('settings')}
           style={{
-            background: 'linear-gradient(135deg, #ECFDF5, #D1FAE5)',
-            border: '2px solid #34D399',
-            borderRadius: 24,
-            padding: '16px',
+            background: '#FFFFFF',
+            border: 'none',
+            borderRadius: 18,
+            padding: '10px 12px',
+            height: 54,
             display: 'flex',
             alignItems: 'center',
-            gap: 14
+            gap: 8,
+            cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.14)'
           }}
         >
-          <div
+          <WalkingPlayerAvatar height={28} isWalking={false} />
+          <span
             style={{
-              width: 64,
-              height: 64,
-              borderRadius: '50%',
-              background: '#FFFFFF',
-              border: '3px solid #10B981',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 34
+              background: 'linear-gradient(135deg, #F59E0B, #B45309)',
+              color: '#FFF',
+              fontSize: 11,
+              fontWeight: 900,
+              padding: '2px 7px',
+              borderRadius: 99,
+              flexShrink: 0
             }}
           >
-            🧑‍🌾
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span
-                style={{
-                  background: '#0EA5E9',
-                  color: '#FFF',
-                  fontSize: 11,
-                  fontWeight: 900,
-                  padding: '2px 8px',
-                  borderRadius: 99
-                }}
-              >
-                Lv.{level}
-              </span>
-              <input
-                value={playerName}
-                onChange={(e) => onChangePlayerName(e.target.value)}
-                style={{
-                  border: '1px solid #10B981',
-                  background: '#FFFFFF',
-                  borderRadius: 8,
-                  padding: '4px 8px',
-                  fontSize: 15,
-                  fontWeight: 900,
-                  color: '#0F172A',
-                  width: 150
-                }}
-              />
-            </div>
-            <div style={{ fontSize: 12, color: '#065F46', fontWeight: 800, marginTop: 6 }}>
-              👣 今日步數：{todaySteps.toLocaleString()} 步 ｜ 💰 金幣：{coins}
-            </div>
-          </div>
-        </div>
+            Lv.{level}
+          </span>
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 900,
+              color: '#1E293B',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {playerName}
+          </span>
+        </button>
 
-        {/* 庫存總覽 */}
+        {/* 商店（對照圖五右一） */}
+        <button
+          onClick={() => onOpenSubModal('shop')}
+          style={{
+            background: '#FFFFFF',
+            border: 'none',
+            borderRadius: 18,
+            padding: '10px 14px',
+            height: 54,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.14)'
+          }}
+        >
+          <span style={{ fontSize: 22 }}>🛍️</span>
+          <span style={{ fontSize: 14.5, fontWeight: 900, color: '#1E293B' }}>商店</span>
+        </button>
+
+        {/* 功能入口（點進去開各自子功能頁面） */}
+        {menuCards.map((item) => (
+          <button
+            key={item.key}
+            onClick={() => onOpenSubModal(item.key)}
+            style={{
+              background: '#FFFFFF',
+              border: 'none',
+              borderRadius: 18,
+              padding: '10px 14px',
+              height: 54,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.14)'
+            }}
+          >
+            <span style={{ fontSize: 22 }}>{item.icon}</span>
+            <span style={{ fontSize: 14.5, fontWeight: 900, color: '#1E293B' }}>{item.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 左下角：圓形 ✕ 返回主畫面按鈕（對照圖五左下角） */}
+      <button
+        onClick={onClose}
+        style={{
+          position: 'fixed',
+          left: 16,
+          bottom: 'max(16px, env(safe-area-inset-bottom))',
+          width: 54,
+          height: 54,
+          borderRadius: '50%',
+          border: '2px solid rgba(255,255,255,0.78)',
+          background: 'radial-gradient(circle at 30% 30%, rgba(52,211,153,0.9), rgba(5,150,105,0.92))',
+          color: '#FFFFFF',
+          fontSize: 20,
+          fontWeight: 900,
+          cursor: 'pointer',
+          boxShadow: '0 6px 16px rgba(0,0,0,0.28)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+        title="關閉選單"
+      >
+        ✕
+      </button>
+    </div>
+  );
+};
+
+/* ==================== 6B. 🖼️ 明信片子頁面 ==================== */
+export const PostcardsModal: React.FC<{
+  postcards: PostcardItem[];
+  onClose: () => void;
+}> = ({ postcards, onClose }) => (
+  <div
+    onClick={onClose}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 1050,
+      background: 'rgba(15, 23, 42, 0.52)',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'flex-end'
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        background: '#FFFBEB',
+        borderRadius: '30px 30px 0 0',
+        height: '82lvh',
+        padding: '20px 18px 28px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        overflowY: 'auto'
+      }}
+    >
+      <ModalHeader title="🖼️ 明信片" subtitle={`共收藏 ${postcards.length} 張`} onClose={onClose} />
+      {postcards.length === 0 ? (
         <div
           style={{
             background: '#FFFFFF',
             borderRadius: 20,
-            padding: '12px 14px',
-            border: '1.5px solid #E2E8F0'
+            padding: '28px 18px',
+            textAlign: 'center',
+            color: '#64748B',
+            fontWeight: 800,
+            fontSize: 13
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 900, color: '#475569', marginBottom: 8 }}>
-            🎒 花蜜與花瓣庫存一覽
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-            {(['white', 'yellow', 'red', 'blue'] as PetalColor[]).map((c) => (
-              <div
-                key={c}
-                style={{
-                  background: '#F8FAFC',
-                  borderRadius: 12,
-                  padding: '6px',
-                  textAlign: 'center'
-                }}
-              >
-                <div style={{ fontSize: 16 }}>{PETAL_META[c].emoji}</div>
-                <div style={{ fontSize: 10, fontWeight: 800, color: '#334155' }}>
-                  瓣 {petalJar[c]} / 蜜 {nectarJar[c]}
-                </div>
-              </div>
-            ))}
-          </div>
+          還沒有明信片，快去地圖打蘑菇帶回各地地標明信片吧！
         </div>
-
-        {/* 主選單快捷鍵 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          {[
-            { label: '😗 口哨花園', key: 'garden' as const },
-            { label: '🍳 油鍋拔苗', key: 'planter' as const },
-            { label: '🍎 探險隊', key: 'expeditions' as const },
-            { label: '🎖️ 飾品一覽', key: 'decor' as const },
-            { label: '➿ 好友與世界', key: 'friends' as const },
-            { label: '🛍️ 商店補給', key: 'shop' as const },
-            { label: '📖 蘑菇與打菇說明', key: 'guide' as const }
-          ].map((btn) => (
-            <button
-              key={btn.key}
-              onClick={() => onOpenSubModal(btn.key)}
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {postcards.map((pc) => (
+            <div
+              key={pc.id}
               style={{
-                border: '1.5px solid #E2E8F0',
                 background: '#FFFFFF',
-                borderRadius: 18,
-                padding: '14px 8px',
-                fontWeight: 900,
-                fontSize: 13,
-                color: '#1E293B',
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                border: '2px solid #FDE047',
+                borderRadius: 20,
+                padding: '12px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
               }}
             >
-              {btn.label}
-            </button>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 900, color: '#0F172A' }}>
+                  📍 {pc.placeName}
+                </div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#D97706', marginTop: 2 }}>
+                  {'⭐'.repeat(pc.stars)} ・ {pc.mushroomName} ・ {pc.createdAt}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {pc.creatures.slice(0, 3).map((cr, idx) => (
+                  <DeGuaCharacter
+                    key={idx}
+                    variety={cr.variety}
+                    decor={cr.decor}
+                    leafStage="flower"
+                    flowerColor="yellow"
+                    showDecor={cr.hasDecor}
+                    isBouncing={false}
+                    size={32}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
+      )}
+    </div>
+  </div>
+);
 
-        {/* 隱私區域保護設定（半徑 50~300m 不留花朵軌跡，花瓣消耗與油鍋加速不變） */}
-        {privacyZone && onChangePrivacyZone && (
-          <div
-            style={{
-              background: '#FFFFFF',
-              borderRadius: 18,
-              padding: '12px 14px',
-              border: '1.5px solid #E2E8F0',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 12.5, fontWeight: 900, color: '#0F172A' }}>
-                🛡️ 種花隱私區域（{privacyZone.radiusMeters} 公尺內不顯示花朵）
-              </span>
-              <button
-                onClick={() =>
-                  onChangePrivacyZone({ ...privacyZone, enabled: !privacyZone.enabled })
-                }
-                style={{
-                  border: 'none',
-                  borderRadius: 99,
-                  padding: '4px 12px',
-                  fontSize: 11.5,
-                  fontWeight: 900,
-                  cursor: 'pointer',
-                  background: privacyZone.enabled ? '#10B981' : '#CBD5E1',
-                  color: '#FFFFFF'
-                }}
-              >
-                {privacyZone.enabled ? '已開啟' : '已關閉'}
-              </button>
-            </div>
-            {privacyZone.enabled && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input
-                  type="range"
-                  min={50}
-                  max={300}
-                  step={25}
-                  value={privacyZone.radiusMeters}
-                  onChange={(e) =>
-                    onChangePrivacyZone({
-                      ...privacyZone,
-                      radiusMeters: Number(e.target.value)
-                    })
-                  }
-                  style={{ flex: 1 }}
-                />
-                <span style={{ fontSize: 11.5, fontWeight: 800, color: '#475569' }}>
-                  {privacyZone.radiusMeters}m
-                </span>
-              </div>
-            )}
-          </div>
-        )}
+/* ==================== 6C. ⚙️ 設定子頁面（乾淨簡潔，無多餘項目） ==================== */
+export const SettingsModal: React.FC<{
+  playerName: string;
+  level: number;
+  todaySteps: number;
+  coins: number;
+  onChangePlayerName: (v: string) => void;
+  onRequestPermissions: () => void;
+  onClose: () => void;
+}> = ({ playerName, level, todaySteps, coins, onChangePlayerName, onRequestPermissions, onClose }) => (
+  <div
+    onClick={onClose}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 1050,
+      background: 'rgba(15, 23, 42, 0.52)',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'flex-end'
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        background: '#F8FAFC',
+        borderRadius: '30px 30px 0 0',
+        height: '76lvh',
+        padding: '20px 18px 28px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        overflowY: 'auto'
+      }}
+    >
+      <ModalHeader title="⚙️ 設定" subtitle={`Lv.${level} ・ 今日 ${todaySteps.toLocaleString()} 步 ・ 💰${coins}`} onClose={onClose} />
 
-        {/* 室內測試步數模擬按鈕 */}
-        <div
+      <div
+        style={{
+          background: '#FFFFFF',
+          borderRadius: 20,
+          padding: '16px',
+          border: '1.5px solid #E2E8F0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 900, color: '#0F172A' }}>玩家暱稱</div>
+        <input
+          value={playerName}
+          onChange={(e) => onChangePlayerName(e.target.value)}
           style={{
-            background: '#FEF3C7',
-            borderRadius: 18,
-            padding: '12px 14px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
+            border: '1.5px solid #CBD5E1',
+            borderRadius: 12,
+            padding: '10px 12px',
+            fontSize: 14,
+            fontWeight: 800,
+            color: '#0F172A'
+          }}
+        />
+      </div>
+
+      <div
+        style={{
+          background: '#FFFFFF',
+          borderRadius: 20,
+          padding: '16px',
+          border: '1.5px solid #E2E8F0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 900, color: '#0F172A' }}>iPhone 定位與計步權限</div>
+        <div style={{ fontSize: 12, color: '#475569', fontWeight: 700, lineHeight: 1.55 }}>
+          若要鎖螢幕時也在背景種花，請到 iPhone「設定 → 地瓜球 → 位置」將「使用 App 期間」改為「永遠」，並確認「動作與健身」及「通知」已開啟。
+        </div>
+        <button
+          onClick={onRequestPermissions}
+          style={{
+            border: 'none',
+            background: '#10B981',
+            color: '#FFFFFF',
+            borderRadius: 99,
+            padding: '10px 16px',
+            fontSize: 13,
+            fontWeight: 900,
+            cursor: 'pointer'
           }}
         >
-          <span style={{ fontSize: 12, fontWeight: 800, color: '#92400E' }}>
-            👟 室內測試工具：模擬走路增加步數
-          </span>
-          <button
-            onClick={() => onSimulateWalkSteps(300)}
-            style={{
-              border: 'none',
-              background: '#D97706',
-              color: '#FFF',
-              fontWeight: 900,
-              fontSize: 12,
-              padding: '8px 14px',
-              borderRadius: 99,
-              cursor: 'pointer'
-            }}
-          >
-            +300 步
-          </button>
-        </div>
+          📍 檢查 / 請求授權
+        </button>
       </div>
     </div>
-  );
-};
+  </div>
+);
 
 /* ==================== 7. 📖 主畫面「蘑菇種類、血量與打菇規則說明」Modal ==================== */
 export const MushroomGuideModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {

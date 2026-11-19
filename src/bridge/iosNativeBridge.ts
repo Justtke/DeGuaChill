@@ -34,6 +34,12 @@ export function postToIosNative(action: string, payload: Record<string, unknown>
   }
 }
 
+export function requestNativeLocation(): boolean {
+  if (!isRunningInsideIosNative()) return false;
+  postToIosNative('requestLocation', {});
+  return true;
+}
+
 export function syncSeedlingsToNative(seedlings: Seedling[], plantingMultiplier: number): void {
   const activeTargets = seedlings
     .filter((s) => s.slotIndex !== null && !s.isReady)

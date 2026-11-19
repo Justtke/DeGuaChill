@@ -63,11 +63,27 @@ jobs:
           print("Successfully injected DeGuaBackgroundManager into AppDelegate.swift")
           PY
 
-          # 自動寫入 iOS Info.plist 背景定位與 CoreMotion 計步晶片權限說明 (支援免費 Apple ID)
+          # 自動套用可愛地瓜球 1024x1024 App Icon 至 Xcode Assets.xcassets
+          ICON_DIR="ios/App/App/Assets.xcassets/AppIcon.appiconset"
+          mkdir -p "$ICON_DIR"
+          cp assets/app-icon.png "$ICON_DIR/AppIcon-512@2x.png"
+          python3 -c '
+          import json
+          from pathlib import Path
+          cfg = {
+              "images": [{"filename": "AppIcon-512@2x.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}],
+              "info": {"author": "xcode", "version": 1},
+          }
+          Path("ios/App/App/Assets.xcassets/AppIcon.appiconset/Contents.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+          '
+
+          # 自動寫入 iOS Info.plist App 顯示名稱與簡潔權限說明 (支援免費 Apple ID)
           PLIST="ios/App/App/Info.plist"
-          /usr/libexec/PlistBuddy -c "Add :NSMotionUsageDescription string '地瓜球需要讀取計步感測器，讓你在口袋走路時自動孵出地瓜球並跳出拔苗通知！'" "$PLIST" || /usr/libexec/PlistBuddy -c "Set :NSMotionUsageDescription '地瓜球需要讀取計步感測器，讓你在口袋走路時自動孵出地瓜球並跳出拔苗通知！'" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string '地瓜球需要定位來讓你邊走邊在地圖上種花並掃描附近手搖店與夜市花苗！'" "$PLIST" || /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription '地瓜球需要定位來讓你邊走邊在地圖上種花並掃描附近手搖店與夜市花苗！'" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Add :NSLocationAlwaysAndWhenInUseUsageDescription string '請選擇「永遠允許」，這樣關螢幕放口袋走路也能自動抓 GPS 種花並在花苗熟透時跳出通知！'" "$PLIST" || /usr/libexec/PlistBuddy -c "Set :NSLocationAlwaysAndWhenInUseUsageDescription '請選擇「永遠允許」，這樣關螢幕放口袋走路也能自動抓 GPS 種花並在花苗熟透時跳出通知！'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName '地瓜球'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string '地瓜球'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName '地瓜球'" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :CFBundleName string '地瓜球'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSMotionUsageDescription string '地瓜球需要讀取計步感測器，讓你散步時自動炸熟瓜糰並跳出起鍋通知！'" "$PLIST" || /usr/libexec/PlistBuddy -c "Set :NSMotionUsageDescription '地瓜球需要讀取計步感測器，讓你散步時自動炸熟瓜糰並跳出起鍋通知！'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string '地瓜球需要定位讓你可以在地圖上種花並掃描附近瓜糰！'" "$PLIST" || /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription '地瓜球需要定位讓你可以在地圖上種花並掃描附近瓜糰！'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSLocationAlwaysAndWhenInUseUsageDescription string '地瓜球需要定位讓你可以在地圖上種花並掃描附近瓜糰！'" "$PLIST" || /usr/libexec/PlistBuddy -c "Set :NSLocationAlwaysAndWhenInUseUsageDescription '地瓜球需要定位讓你可以在地圖上種花並掃描附近瓜糰！'" "$PLIST"
           /usr/libexec/PlistBuddy -c "Delete :UIBackgroundModes" "$PLIST" || true
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string location" "$PLIST"

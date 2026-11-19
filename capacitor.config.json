@@ -1,6 +1,6 @@
 {
   "appId": "com.deguachill.app",
-  "appName": "地瓜球 DeGuaChill",
+  "appName": "地瓜球",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "ios": {

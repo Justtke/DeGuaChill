@@ -4,8 +4,8 @@
 }
 
 :root {
-  /* Clears iOS 26 Standalone WebApp ~95px top status/pocket blur cleanly on Dynamic Island iPhones while staying compact on non-notch screens */
-  --top-safe-hud: calc(env(safe-area-inset-top, 0px) * 1.45 + 14px);
+  /* Native iOS matches Pikmin tight safe-area spacing; Safari Standalone PWA overrides via App.tsx if needed */
+  --top-safe-hud: calc(env(safe-area-inset-top, 0px) + 8px);
 }
 
 html, body, #root {
