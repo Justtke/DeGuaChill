@@ -86,6 +86,78 @@ function drawCanvasGroundFlower(
 
 // 記憶體圖磚快取：將已解碼分類完成的 256x256 街廓矩陣快取於記憶體中，切換視角或重開地圖時 0ms 瞬間渲染，絕不重複請求或漏塊！
 const cachedFinalTileTypes = new Map<string, Uint8Array>();
+const cachedMiniTileImages = new Map<string, ImageData>();
+
+/**
+ * 首頁小地圖專用平滑向量風著色器（保留抗鋸齒弧線與清晰行政區地名，絕不產生破碎鋸齒或建築碎塊）
+ */
+function paintPikminMiniTileToCanvas(
+  ctx: CanvasRenderingContext2D,
+  srcData: Uint8ClampedArray
+): ImageData {
+  const outImg = ctx.createImageData(256, 256);
+  const dst = outImg.data;
+
+  for (let i = 0; i < 65536; i++) {
+    const p = i << 2;
+    const r = srcData[p];
+    const g = srcData[p + 1];
+    const b = srcData[p + 2];
+    const minC = r < g ? (r < b ? r : b) : g < b ? g : b;
+    const maxC = r > g ? (r > b ? r : b) : g > b ? g : b;
+    const sat = maxC - minC;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+    // 1. 水域（河川 / 海洋）平滑轉為皮克敏粉彩水藍 (#A6D7FA)
+    if (b > r + 10 && b >= 156 && g >= 142) {
+      const wMix = Math.min(1, (b - r) / 36);
+      dst[p] = Math.round(244 * (1 - wMix) + 166 * wMix);
+      dst[p + 1] = Math.round(246 * (1 - wMix) + 215 * wMix);
+      dst[p + 2] = Math.round(242 * (1 - wMix) + 250 * wMix);
+      dst[p + 3] = 255;
+      continue;
+    }
+
+    // 2. 高速公路 / 省道 / 幹道：平滑連續奶油黃道路 (#FCE79C)，含抗鋸齒柔邊
+    if (r >= 205 && g >= 120 && r - b >= 14) {
+      const roadMix = Math.min(1, (r - b) / 42);
+      dst[p] = Math.round(246 * (1 - roadMix) + 252 * roadMix);
+      dst[p + 1] = Math.round(245 * (1 - roadMix) + 231 * roadMix);
+      dst[p + 2] = Math.round(238 * (1 - roadMix) + 156 * roadMix);
+      dst[p + 3] = 255;
+      continue;
+    }
+
+    // 3. 公園綠地：極淡柔霧淺綠，不搶眼也不蓋過足跡雲霧
+    if (g > r + 6 && g > b + 6 && g >= 140) {
+      dst[p] = 240;
+      dst[p + 1] = 247;
+      dst[p + 2] = 237;
+      dst[p + 3] = 255;
+      continue;
+    }
+
+    // 4. 保留清晰行政區中文地名（臺北市 / 新北市等深色筆畫），過濾灰線雜訊
+    if (maxC < 155 && sat < 36) {
+      const ink = Math.max(0, Math.min(1, (155 - lum) / 115));
+      dst[p] = Math.round(245 * (1 - ink) + 88 * ink);
+      dst[p + 1] = Math.round(246 * (1 - ink) + 96 * ink);
+      dst[p + 2] = Math.round(241 * (1 - ink) + 108 * ink);
+      dst[p + 3] = 255;
+      continue;
+    }
+
+    // 5. 平滑內插一般陸地 (#F5F6F1) 與白色市區細道路 (#FCF1C4)，零硬邊破碎感
+    const streetMix = Math.max(0, Math.min(1, (lum - 245) / 10));
+    dst[p] = Math.round(245 * (1 - streetMix) + 252 * streetMix);
+    dst[p + 1] = Math.round(246 * (1 - streetMix) + 241 * streetMix);
+    dst[p + 2] = Math.round(241 * (1 - streetMix) + 196 * streetMix);
+    dst[p + 3] = 255;
+  }
+
+  ctx.putImageData(outImg, 0, 0);
+  return outImg;
+}
 
 const TILE_CDN_MIRRORS = [
   (z: number, x: number, y: number) => `https://a.tile.openstreetmap.org/${z}/${x}/${y}.png`,
@@ -229,22 +301,32 @@ export function createPikminOsmShaderTileLayer(
         return tile;
       }
 
-      ctx.fillStyle = '#60B354';
+      const { isMini: initIsMini } = getState();
+      ctx.fillStyle = initIsMini ? '#F5F6F1' : '#60B354';
       ctx.fillRect(0, 0, 256, 256);
 
       const cacheKey = `${coords.z}_${coords.x}_${coords.y}`;
-      const cached = cachedFinalTileTypes.get(cacheKey);
-      if (cached) {
-        const { isMini, cameraPerspective } = getState();
-        paintFinalTypeToCanvas(
-          ctx,
-          cached,
-          coords,
-          isMini,
-          !isMini && cameraPerspective === 'surround'
-        );
-        window.setTimeout(() => done(undefined, tile), 0);
-        return tile;
+      if (initIsMini) {
+        const cachedMini = cachedMiniTileImages.get(cacheKey);
+        if (cachedMini) {
+          ctx.putImageData(cachedMini, 0, 0);
+          window.setTimeout(() => done(undefined, tile), 0);
+          return tile;
+        }
+      } else {
+        const cached = cachedFinalTileTypes.get(cacheKey);
+        if (cached) {
+          const { isMini, cameraPerspective } = getState();
+          paintFinalTypeToCanvas(
+            ctx,
+            cached,
+            coords,
+            isMini,
+            !isMini && cameraPerspective === 'surround'
+          );
+          window.setTimeout(() => done(undefined, tile), 0);
+          return tile;
+        }
       }
 
       let attempt = 0;
@@ -270,6 +352,14 @@ export function createPikminOsmShaderTileLayer(
 
             offCtx.drawImage(img, 0, 0, 256, 256);
             const srcData = offCtx.getImageData(0, 0, 256, 256).data;
+
+            const { isMini: curIsMini } = getState();
+            if (curIsMini) {
+              const rendered = paintPikminMiniTileToCanvas(ctx, srcData);
+              cachedMiniTileImages.set(cacheKey, rendered);
+              done(undefined, tile);
+              return;
+            }
 
             const rawType = new Uint8Array(65536);
             const isTextCore = new Uint8Array(65536);
@@ -718,11 +808,11 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const targetZoom = isMini ? 15 : cameraPerspective === 'surround' ? Math.round(surroundZoomRef.current) : overheadZoomRef.current;
+    const targetZoom = isMini ? 13 : cameraPerspective === 'surround' ? Math.round(surroundZoomRef.current) : overheadZoomRef.current;
     const map = L.map(containerRef.current, {
       center: [myLat, myLng],
       zoom: targetZoom,
-      minZoom: 13,
+      minZoom: isMini ? 12 : 13,
       maxZoom: 18,
       zoomControl: false,
       attributionControl: false,
@@ -991,7 +1081,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
 
     hasPannedOverheadRef.current = false;
     const targetZoom = isMini
-      ? 15
+      ? 13
       : cameraPerspective === 'surround'
       ? Math.round(surroundZoomRef.current)
       : overheadZoomRef.current;
@@ -1032,7 +1122,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         overheadZoomRef.current = 15;
         setOverheadZoom(15);
       }
-      const targetZoom = isMini ? 15 : cameraPerspective === 'surround' ? 17 : 15;
+      const targetZoom = isMini ? 13 : cameraPerspective === 'surround' ? 17 : 15;
       map.invalidateSize({ animate: false });
       map.setView([myLat, myLng], targetZoom, { animate: false });
       setViewCenter({ lat: myLat, lng: myLng });
@@ -1041,7 +1131,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
 
     if (distMeters > 2500) {
       const targetZoom = isMini
-        ? 15
+        ? 13
         : cameraPerspective === 'surround'
         ? Math.round(surroundZoomRef.current)
         : overheadZoomRef.current;
@@ -1072,40 +1162,61 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     if (!group) return;
     group.clearLayers();
 
-    // ==================== 模式 A：主畫面紅框靜態「今日足跡概覽地圖」（對照皮克敏圖二淡雅綠霧＋白邊雙腳腳印！） ====================
+    // ==================== 模式 A：主畫面紅框靜態「今日足跡概覽地圖」（完全對照皮克敏圖二：柔和綠霧雲＋白邊雙腳腳印＋頂端花與頭像） ====================
     if (isMini) {
       const plantedList = Object.values(flowers);
-      const trailPoints: [number, number][] =
-        plantedList.length >= 3
-          ? plantedList.slice(-8).map((c) => [c.lat, c.lng])
-          : [
-              [myLat - 0.0014, myLng - 0.0011],
-              [myLat - 0.001, myLng - 0.00075],
-              [myLat - 0.00055, myLng - 0.00035],
-              [myLat - 0.00015, myLng + 0.00005],
-              [myLat + 0.00025, myLng + 0.0004],
-              [myLat + 0.00065, myLng + 0.00075]
-            ];
+      let minLat = 90,
+        maxLat = -90,
+        minLng = 180,
+        maxLng = -180;
+      plantedList.forEach((c) => {
+        if (c.lat < minLat) minLat = c.lat;
+        if (c.lat > maxLat) maxLat = c.lat;
+        if (c.lng < minLng) minLng = c.lng;
+        if (c.lng > maxLng) maxLng = c.lng;
+      });
+      const realSpan = plantedList.length >= 4 ? Math.hypot(maxLat - minLat, maxLng - minLng) : 0;
 
-      // 柔和散開的足跡翠綠探索霧雲
-      L.circle([myLat, myLng], {
-        radius: 260,
-        color: '#22C55E',
-        weight: 0,
-        fillColor: '#4ADE80',
-        fillOpacity: 0.22,
-        interactive: false
-      }).addTo(group);
+      let trailPoints: [number, number][];
+      if (realSpan >= 0.008) {
+        const sampled: [number, number][] = [];
+        for (const c of plantedList) {
+          const prev = sampled[sampled.length - 1];
+          if (!prev || Math.hypot(c.lat - prev[0], c.lng - prev[1]) >= 0.0028) {
+            sampled.push([c.lat, c.lng]);
+          }
+        }
+        trailPoints = sampled.slice(-6);
+      } else {
+        trailPoints = [
+          [myLat - 0.0075, myLng - 0.011],
+          [myLat - 0.0042, myLng - 0.0065],
+          [myLat - 0.001, myLng - 0.0015],
+          [myLat + 0.0022, myLng + 0.0035],
+          [myLat + 0.0052, myLng + 0.0082],
+          [myLat + 0.0078, myLng + 0.0115]
+        ];
+      }
+
+      // 柔邊水彩綠探索霧雲（無硬邊圓框）
+      trailPoints.forEach(([tLat, tLng], idx) => {
+        const mistSize = idx === Math.floor(trailPoints.length / 2) ? 155 : 120;
+        const mistIcon = L.divIcon({
+          className: 'mini-footprint-mist',
+          html: `<div style="
+            width:${mistSize}px;
+            height:${mistSize}px;
+            border-radius:50%;
+            background:radial-gradient(circle, rgba(74,185,96,0.36) 0%, rgba(105,202,122,0.18) 46%, rgba(105,202,122,0) 74%);
+            pointer-events:none;
+          "></div>`,
+          iconSize: [mistSize, mistSize],
+          iconAnchor: [mistSize / 2, mistSize / 2]
+        });
+        L.marker([tLat, tLng], { icon: mistIcon, interactive: false }).addTo(group);
+      });
 
       trailPoints.forEach(([tLat, tLng], idx) => {
-        L.circle([tLat, tLng], {
-          radius: 120,
-          weight: 0,
-          fillColor: '#34D399',
-          fillOpacity: 0.14,
-          interactive: false
-        }).addTo(group);
-
         const nextPt = trailPoints[Math.min(trailPoints.length - 1, idx + 1)];
         const prevPt = trailPoints[Math.max(0, idx - 1)];
         const dLat = nextPt[0] - prevPt[0];
@@ -1116,18 +1227,29 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         if (isLast) {
           const destIcon = L.divIcon({
             className: 'mini-footprint-head',
-            html: `<div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
-              <svg width="24" height="24" viewBox="0 0 28 28" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,0.22));">
-                <circle cx="14" cy="7" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
-                <circle cx="20" cy="12" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
-                <circle cx="18" cy="19" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
-                <circle cx="10" cy="19" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
-                <circle cx="8" cy="12" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
+            html: `<div style="position:relative;width:30px;height:30px;display:flex;align-items:center;justify-content:center;">
+              <svg width="26" height="26" viewBox="0 0 28 28" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,0.22));">
+                <circle cx="14" cy="7" r="4.5" fill="#F43F5E" stroke="#FFFFFF" stroke-width="1.3"/>
+                <circle cx="20" cy="12" r="4.5" fill="#F43F5E" stroke="#FFFFFF" stroke-width="1.3"/>
+                <circle cx="18" cy="19" r="4.5" fill="#F43F5E" stroke="#FFFFFF" stroke-width="1.3"/>
+                <circle cx="10" cy="19" r="4.5" fill="#F43F5E" stroke="#FFFFFF" stroke-width="1.3"/>
+                <circle cx="8" cy="12" r="4.5" fill="#F43F5E" stroke="#FFFFFF" stroke-width="1.3"/>
                 <circle cx="14" cy="13.5" r="3.4" fill="#FDE047"/>
               </svg>
+              <div style="
+                position:absolute;
+                top:-4px;
+                right:-4px;
+                width:18px;
+                height:18px;
+                border-radius:50%;
+                background:#3B82F6;
+                border:2.2px solid #FFFFFF;
+                box-shadow:0 2px 5px rgba(0,0,0,0.28);
+              "></div>
             </div>`,
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
           });
           L.marker([tLat, tLng], { icon: destIcon, interactive: false }).addTo(group);
           return;
@@ -1136,17 +1258,15 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         const isLeftLead = idx % 2 === 0;
         const fpIcon = L.divIcon({
           className: 'mini-footprint-step',
-          html: `<div style="transform: rotate(${angleDeg.toFixed(1)}deg);filter: drop-shadow(0 1px 2px rgba(0,0,0,0.22));">
+          html: `<div style="transform: rotate(${angleDeg.toFixed(1)}deg);filter: drop-shadow(0 1px 2px rgba(0,0,0,0.18));">
             <svg width="20" height="20" viewBox="0 0 24 24">
-              <!-- 左腳鞋印 -->
-              <g transform="translate(${isLeftLead ? 0 : 0}, ${isLeftLead ? -1.5 : 1.5})">
-                <ellipse cx="8" cy="9" rx="2.7" ry="4.1" fill="#10B981" stroke="#FFFFFF" stroke-width="1.4"/>
-                <circle cx="8" cy="15.2" r="1.9" fill="#10B981" stroke="#FFFFFF" stroke-width="1.3"/>
+              <g transform="translate(0, ${isLeftLead ? -1.5 : 1.5})">
+                <ellipse cx="8" cy="9" rx="2.6" ry="4" fill="#2BB673" stroke="#FFFFFF" stroke-width="1.5"/>
+                <circle cx="8" cy="15.2" r="1.8" fill="#2BB673" stroke="#FFFFFF" stroke-width="1.3"/>
               </g>
-              <!-- 右腳鞋印 -->
               <g transform="translate(0, ${isLeftLead ? 1.5 : -1.5})">
-                <ellipse cx="16" cy="9" rx="2.7" ry="4.1" fill="#10B981" stroke="#FFFFFF" stroke-width="1.4"/>
-                <circle cx="16" cy="15.2" r="1.9" fill="#10B981" stroke="#FFFFFF" stroke-width="1.3"/>
+                <ellipse cx="16" cy="9" rx="2.6" ry="4" fill="#2BB673" stroke="#FFFFFF" stroke-width="1.5"/>
+                <circle cx="16" cy="15.2" r="1.8" fill="#2BB673" stroke="#FFFFFF" stroke-width="1.3"/>
               </g>
             </svg>
           </div>`,
@@ -1609,7 +1729,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
           height: '100%',
           position: 'relative',
           overflow: 'hidden',
-          background: '#60B354',
+          background: isMini ? '#F5F6F1' : '#60B354',
           cursor: isSurround ? (isDraggingOrbit ? 'grabbing' : 'grab') : 'default',
           touchAction: isSurround ? 'none' : 'auto',
           '--camera-bearing': `${activeBearing.toFixed(1)}deg`,

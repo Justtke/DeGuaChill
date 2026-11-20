@@ -1805,11 +1805,11 @@ export const App: React.FC = () => {
 
   const glassBubbleStyle: React.CSSProperties = {
     borderRadius: '50%',
-    border: '1.5px solid rgba(255, 255, 255, 0.52)',
+    border: '1px solid rgba(255, 255, 255, 0.58)',
     background:
-      'radial-gradient(circle at 30% 24%, rgba(255,255,255,0.68) 0%, rgba(167,243,208,0.34) 38%, rgba(16,185,129,0.52) 76%, rgba(6,78,59,0.72) 100%)',
+      'radial-gradient(circle at 30% 24%, rgba(255,255,255,0.58) 0%, rgba(134,239,172,0.22) 34%, rgba(21,128,61,0.44) 72%, rgba(5,46,22,0.72) 100%)',
     boxShadow:
-      '0 6px 16px rgba(0,0,0,0.24), inset 0 4px 10px rgba(255,255,255,0.78), inset 0 -5px 10px rgba(6,78,59,0.45)',
+      '0 4px 14px rgba(0,0,0,0.28), inset 0 2.5px 6px rgba(255,255,255,0.78), inset 0 -4px 8px rgba(5,46,22,0.52)',
     backdropFilter: 'blur(4px)',
     WebkitBackdropFilter: 'blur(4px)',
     cursor: 'pointer',
@@ -1826,7 +1826,7 @@ export const App: React.FC = () => {
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        overflowY: 'auto',
+        overflow: 'hidden',
         position: 'relative'
       }}
     >
@@ -1860,19 +1860,19 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* ==================== 上半部固定卡片區（1:1 對照皮克敏圖二＆圖三比例；開選單時置於 zIndex 45 保持原位！） ==================== */}
+      {/* ==================== 上半部固定卡片區（全部採用 lvh/clamp 比例縮放對齊皮克敏圖二＆圖四高度與字體粗細） ==================== */}
       <div
         style={{
-          padding: 'var(--top-safe-hud) 14px 4px',
+          padding: 'var(--top-safe-hud) clamp(10px, 3.2vw, 14px) 0',
           display: 'flex',
           flexDirection: 'column',
-          gap: 9,
+          gap: 'clamp(5px, 0.72lvh, 8px)',
           zIndex: isProfileMenuOpen ? 45 : 10,
           position: 'relative'
         }}
       >
-        {/* 【頂部三顆純白膠囊】：飾品一覽 ｜ 好友 ｜ 通知（移除說明，字體比例比照圖二！） */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {/* 【頂部三顆純白膠囊】：飾品一覽 ｜ 好友 ｜ 通知 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'clamp(6px, 2vw, 9px)' }}>
           <button
             onClick={() => {
               setIsProfileMenuOpen(false);
@@ -1881,21 +1881,22 @@ export const App: React.FC = () => {
             style={{
               background: '#FFFFFF',
               border: 'none',
-              borderRadius: 99,
-              padding: '8px 6px',
+              borderRadius: 999,
+              height: 'clamp(30px, 3.85lvh, 36px)',
+              padding: '0 6px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
-              fontSize: 13.5,
-              fontWeight: 900,
-              color: '#1E293B',
+              gap: 'clamp(4px, 1.4vw, 7px)',
+              fontSize: 'clamp(13px, 1.72lvh, 15px)',
+              fontWeight: 600,
+              color: '#374151',
               cursor: 'pointer',
-              boxShadow: '0 3px 10px rgba(0,0,0,0.12)',
+              boxShadow: '0 3px 10px rgba(0,0,0,0.1)',
               whiteSpace: 'nowrap'
             }}
           >
-            <span style={{ fontSize: 16 }}>🎖️</span>
+            <span style={{ fontSize: 'clamp(15px, 2lvh, 17px)' }}>🎖️</span>
             <span>飾品一覽</span>
           </button>
 
@@ -1907,21 +1908,22 @@ export const App: React.FC = () => {
             style={{
               background: '#FFFFFF',
               border: 'none',
-              borderRadius: 99,
-              padding: '8px 6px',
+              borderRadius: 999,
+              height: 'clamp(30px, 3.85lvh, 36px)',
+              padding: '0 6px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
-              fontSize: 13.5,
-              fontWeight: 900,
-              color: '#1E293B',
+              gap: 'clamp(4px, 1.4vw, 7px)',
+              fontSize: 'clamp(13px, 1.72lvh, 15px)',
+              fontWeight: 600,
+              color: '#374151',
               cursor: 'pointer',
-              boxShadow: '0 3px 10px rgba(0,0,0,0.12)',
+              boxShadow: '0 3px 10px rgba(0,0,0,0.1)',
               whiteSpace: 'nowrap'
             }}
           >
-            <span style={{ fontSize: 16 }}>➿</span>
+            <span style={{ fontSize: 'clamp(15px, 2lvh, 17px)' }}>➿</span>
             <span>好友</span>
           </button>
 
@@ -1933,43 +1935,44 @@ export const App: React.FC = () => {
             style={{
               background: '#FFFFFF',
               border: 'none',
-              borderRadius: 99,
-              padding: '8px 6px',
+              borderRadius: 999,
+              height: 'clamp(30px, 3.85lvh, 36px)',
+              padding: '0 6px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
-              fontSize: 13.5,
-              fontWeight: 900,
-              color: '#1E293B',
+              gap: 'clamp(4px, 1.4vw, 7px)',
+              fontSize: 'clamp(13px, 1.72lvh, 15px)',
+              fontWeight: 600,
+              color: '#374151',
               cursor: 'pointer',
-              boxShadow: '0 3px 10px rgba(0,0,0,0.12)',
+              boxShadow: '0 3px 10px rgba(0,0,0,0.1)',
               whiteSpace: 'nowrap'
             }}
           >
-            <span style={{ fontSize: 16 }}>📢</span>
+            <span style={{ fontSize: 'clamp(15px, 2lvh, 17px)' }}>📢</span>
             <span>通知</span>
           </button>
         </div>
 
-        {/* 【主畫面中央大白卡：上半部靜態今日足跡概覽地圖＋步數 ＆ 下半部本週日曆連成一體（高度與文字比例完全對照圖二！）】 */}
+        {/* 【主畫面中央大白卡：比例對齊皮克敏，上地圖＋下日曆】 */}
         <div
           style={{
             background: '#FFFFFF',
-            borderRadius: 24,
-            padding: '8px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            borderRadius: 'clamp(18px, 2.3lvh, 22px)',
+            padding: 'clamp(4px, 0.55lvh, 6px)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.11)',
             display: 'flex',
             flexDirection: 'column'
           }}
         >
-          {/* 紅框地圖區（加高至 212px，還原皮克敏上方高挑地圖比例） */}
+          {/* 足跡地圖區（以螢幕比例動態決定高度，跨機型皆切齊皮克敏圖卡底緣） */}
           <div
             style={{
               position: 'relative',
               width: '100%',
-              height: 212,
-              borderRadius: 18,
+              height: 'clamp(148px, 20.6lvh, 196px)',
+              borderRadius: 'clamp(14px, 1.85lvh, 18px)',
               overflow: 'hidden'
             }}
           >
@@ -1988,7 +1991,7 @@ export const App: React.FC = () => {
               activeExpeditions={[]}
             />
 
-            {/* 地圖上唯一的按鈕：你有 X 項探險！ > */}
+            {/* 地圖上方探險浮動膠囊 */}
             <button
               onClick={() => {
                 setIsProfileMenuOpen(false);
@@ -1996,35 +1999,35 @@ export const App: React.FC = () => {
               }}
               style={{
                 position: 'absolute',
-                top: 12,
+                top: 'clamp(6px, 0.9lvh, 10px)',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 zIndex: 410,
                 background: 'rgba(255, 255, 255, 0.96)',
-                border: '1.5px solid #E2E8F0',
-                borderRadius: 99,
-                padding: '7px 20px',
+                border: '1px solid #E2E8F0',
+                borderRadius: 999,
+                padding: 'clamp(4px, 0.6lvh, 6px) clamp(14px, 4vw, 18px)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                fontSize: 13.5,
-                fontWeight: 900,
-                color: '#1E293B',
+                gap: 7,
+                fontSize: 'clamp(12.5px, 1.65lvh, 14.5px)',
+                fontWeight: 600,
+                color: '#374151',
                 cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.14)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
                 whiteSpace: 'nowrap'
               }}
             >
-              <span style={{ fontSize: 18 }}>🍄</span>
+              <span style={{ fontSize: 'clamp(15px, 2lvh, 18px)' }}>🍄</span>
               <span>你有 {totalExpeditionItems} 項探險！</span>
-              <span style={{ color: '#94A3B8' }}>&gt;</span>
+              <span style={{ color: '#94A3B8', fontWeight: 500 }}>&gt;</span>
             </button>
 
-            {/* 地圖正下方中央：對照圖二「深炭黑粗字白外框步數 + 左側小花點綴」 */}
+            {/* 地圖正下方中央：數字正對中線置中＋左下小花綴飾不推移數字！ */}
             <div
               style={{
                 position: 'absolute',
-                bottom: 8,
+                bottom: 'clamp(5px, 0.7lvh, 8px)',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 zIndex: 405,
@@ -2034,15 +2037,17 @@ export const App: React.FC = () => {
                 pointerEvents: 'none'
               }}
             >
-              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'flex-end' }}>
-                {/* 左側可愛立體花朵綴飾（對照圖二數字左下藍花） */}
+              <div style={{ position: 'relative', display: 'inline-block' }}>
                 <svg
-                  width="34"
-                  height="34"
+                  width="32"
+                  height="32"
                   viewBox="0 0 34 34"
                   style={{
-                    marginRight: -6,
-                    marginBottom: 2,
+                    position: 'absolute',
+                    right: 'calc(100% - 7px)',
+                    bottom: 2,
+                    width: 'clamp(28px, 3.7lvh, 34px)',
+                    height: 'clamp(28px, 3.7lvh, 34px)',
                     filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.22))',
                     zIndex: 2
                   }}
@@ -2056,14 +2061,14 @@ export const App: React.FC = () => {
                 </svg>
                 <div
                   style={{
-                    fontSize: 44,
-                    fontWeight: 900,
+                    fontSize: 'clamp(36px, 4.9lvh, 45px)',
+                    fontWeight: 800,
                     color: '#1F2937',
                     lineHeight: 0.94,
                     letterSpacing: 0.5,
                     WebkitTextStroke: '5px #FFFFFF',
                     paintOrder: 'stroke fill',
-                    textShadow: '0 3px 8px rgba(0,0,0,0.24)'
+                    textShadow: '0 3px 8px rgba(0,0,0,0.22)'
                   }}
                 >
                   {todaySteps}
@@ -2071,8 +2076,8 @@ export const App: React.FC = () => {
               </div>
               <div
                 style={{
-                  fontSize: 13.5,
-                  fontWeight: 900,
+                  fontSize: 'clamp(12px, 1.55lvh, 14px)',
+                  fontWeight: 700,
                   color: '#1F2937',
                   marginTop: 2,
                   WebkitTextStroke: '2.5px #FFFFFF',
@@ -2084,38 +2089,46 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* 同一張大白卡下半部：每日紀錄日曆（依所在時區動態算出本週一～日！） */}
+          {/* 同一張大白卡下半部：每日紀錄日曆（依所在時區動態算出本週一～日，字體比例對齊皮克敏！） */}
           <div
             onClick={() => {
               setIsProfileMenuOpen(false);
               setIsLifelogModalOpen(true);
             }}
             style={{
-              padding: '12px 8px 8px',
+              padding: 'clamp(6px, 0.85lvh, 10px) 6px clamp(4px, 0.55lvh, 7px)',
               cursor: 'pointer'
             }}
           >
-            <div style={{ textAlign: 'center', fontSize: 16, fontWeight: 900, color: '#334155', marginBottom: 10 }}>
+            <div
+              style={{
+                textAlign: 'center',
+                fontSize: 'clamp(15px, 1.98lvh, 17.5px)',
+                fontWeight: 600,
+                color: '#374151',
+                marginBottom: 'clamp(4px, 0.65lvh, 8px)'
+              }}
+            >
               {todayDateStr}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, textAlign: 'center' }}>
               {weekDays.map((wd) => {
                 const mood = wd.isPastOrToday && !wd.isToday ? dailyMoods[wd.slotKey] : undefined;
                 return (
-                  <div key={wd.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 800, color: '#64748B' }}>{wd.label}</span>
+                  <div key={wd.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'clamp(2px, 0.4lvh, 4px)' }}>
+                    <span style={{ fontSize: 'clamp(11px, 1.38lvh, 12.5px)', fontWeight: 500, color: '#6B7280' }}>{wd.label}</span>
                     {mood ? (
                       <div
                         style={{
-                          width: 34,
-                          height: 34,
+                          width: 'clamp(26px, 3.45lvh, 32px)',
+                          height: 'clamp(26px, 3.45lvh, 32px)',
                           borderRadius: '50%',
                           background: '#FEF08A',
                           border: '1.5px solid #F59E0B',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: 17
+                          fontSize: 'clamp(15px, 1.9lvh, 17px)'
                         }}
                       >
                         {mood}
@@ -2123,15 +2136,15 @@ export const App: React.FC = () => {
                     ) : (
                       <div
                         style={{
-                          width: 34,
-                          height: 34,
+                          width: 'clamp(26px, 3.45lvh, 32px)',
+                          height: 'clamp(26px, 3.45lvh, 32px)',
                           borderRadius: '50%',
-                          border: wd.isToday ? '2px solid #22C55E' : '1px solid transparent',
+                          border: wd.isToday ? '1.8px solid #5EC28A' : '1px solid transparent',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: 15,
-                          fontWeight: 900,
+                          fontSize: 'clamp(14.5px, 1.9lvh, 17px)',
+                          fontWeight: 600,
                           color: wd.isToday ? '#16A34A' : '#93C5FD'
                         }}
                       >
@@ -2145,7 +2158,7 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* 【進行中的任務卡片（比例對照圖二）】 */}
+        {/* 【進行中的任務卡片（高度與文字粗細比照圖二）】 */}
         <div
           onClick={() => {
             setIsProfileMenuOpen(false);
@@ -2153,9 +2166,9 @@ export const App: React.FC = () => {
           }}
           style={{
             background: '#FFFFFF',
-            borderRadius: 18,
-            padding: '12px 16px',
-            minHeight: 72,
+            borderRadius: 'clamp(14px, 1.9lvh, 18px)',
+            padding: '0 clamp(12px, 3.5vw, 16px)',
+            height: 'clamp(54px, 7.0lvh, 66px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -2165,10 +2178,17 @@ export const App: React.FC = () => {
           }}
         >
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14.5, fontWeight: 900, color: '#1E293B', marginBottom: 8 }}>
+            <div
+              style={{
+                fontSize: 'clamp(14px, 1.85lvh, 16.5px)',
+                fontWeight: 600,
+                color: '#374151',
+                marginBottom: 'clamp(4px, 0.6lvh, 7px)'
+              }}
+            >
               摧毀 {missionTarget} 朵蘑菇
             </div>
-            <div style={{ width: '100%', height: 7, background: '#E2E8F0', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ width: '100%', height: 'clamp(5px, 0.65lvh, 6.5px)', background: '#E2E8F0', borderRadius: 99, overflow: 'hidden' }}>
               <div
                 style={{
                   width: `${missionPct}%`,
@@ -2178,7 +2198,14 @@ export const App: React.FC = () => {
                 }}
               />
             </div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: mushroomsDestroyed >= missionTarget ? '#16A34A' : '#64748B', marginTop: 6 }}>
+            <div
+              style={{
+                fontSize: 'clamp(11.5px, 1.48lvh, 13px)',
+                fontWeight: 500,
+                color: mushroomsDestroyed >= missionTarget ? '#16A34A' : '#6B7280',
+                marginTop: 'clamp(3px, 0.45lvh, 5px)'
+              }}
+            >
               {mushroomsDestroyed >= missionTarget
                 ? '✨ 點此領取任務獎勵！'
                 : `+還差 ${Math.max(1, missionTarget - mushroomsDestroyed)} 朵蘑菇 (${mushroomsDestroyed}/${missionTarget})`}
@@ -2193,13 +2220,13 @@ export const App: React.FC = () => {
               flowerColor="white"
               showDecor={true}
               isBouncing={false}
-              size={44}
+              size={40}
             />
           </div>
         </div>
 
         {/* 【個人資訊 (2吋照＋六角分色Lv徽章＋痞諾丘) ＆ 商店 (未領免費禮斜角綠袋 / 已領純白底)】 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'clamp(8px, 2.4vw, 10px)' }}>
           <button
             onClick={() => {
               if (isProfileMenuOpen) {
@@ -2212,9 +2239,9 @@ export const App: React.FC = () => {
             style={{
               background: '#FFFFFF',
               border: 'none',
-              borderRadius: 16,
-              padding: '7px 12px',
-              height: 54,
+              borderRadius: 'clamp(13px, 1.75lvh, 16px)',
+              padding: '0 clamp(10px, 2.8vw, 12px)',
+              height: 'clamp(44px, 5.5lvh, 52px)',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
@@ -2222,15 +2249,15 @@ export const App: React.FC = () => {
               boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
             }}
           >
-            <PlayerPortraitAvatar size={38} />
+            <PlayerPortraitAvatar size={36} />
             <div style={{ marginLeft: -12, marginTop: 8, zIndex: 2 }}>
               <PlayerLevelHexBadge level={playerLevel} />
             </div>
             <span
               style={{
-                fontSize: 15.5,
-                fontWeight: 900,
-                color: '#1E293B',
+                fontSize: 'clamp(15px, 2.0lvh, 17.5px)',
+                fontWeight: 600,
+                color: '#374151',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -2250,9 +2277,9 @@ export const App: React.FC = () => {
               position: 'relative',
               background: '#FFFFFF',
               border: 'none',
-              borderRadius: 16,
-              padding: '7px 14px',
-              height: 54,
+              borderRadius: 'clamp(13px, 1.75lvh, 16px)',
+              padding: '0 clamp(10px, 3vw, 14px)',
+              height: 'clamp(44px, 5.5lvh, 52px)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: canClaimDailyGift ? 'flex-start' : 'center',
@@ -2263,8 +2290,8 @@ export const App: React.FC = () => {
             }}
             title={canClaimDailyGift ? '點此領取今日免費禮物！' : '商店'}
           >
-            <span style={{ fontSize: 18, zIndex: 2 }}>🛍️</span>
-            <span style={{ fontSize: 15.5, fontWeight: 900, color: '#1E293B', zIndex: 2 }}>
+            <span style={{ fontSize: 'clamp(17px, 2.2lvh, 19px)', zIndex: 2 }}>🛍️</span>
+            <span style={{ fontSize: 'clamp(15px, 2.0lvh, 17.5px)', fontWeight: 600, color: '#374151', zIndex: 2 }}>
               商店
             </span>
 
@@ -2304,14 +2331,14 @@ export const App: React.FC = () => {
           </button>
         </div>
 
-        {/* 圖四：按了左下角漢堡選單後，直接在上方卡片正下方滑出 7 顆純白雙欄按鈕（保留上方卡＋痞諾丘＋商店原位！） */}
+        {/* 圖四：按了左下角漢堡選單後，直接在上方卡片正下方滑出 7 顆純白雙欄按鈕（保留上方卡＋痞諾丘＋商店原位，絕不貼底！） */}
         {isProfileMenuOpen && (
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
-              gap: 10,
-              marginTop: 2
+              gap: 'clamp(6px, 0.85lvh, 9px) clamp(8px, 2.4vw, 10px)',
+              marginTop: 1
             }}
           >
             {[
@@ -2338,34 +2365,60 @@ export const App: React.FC = () => {
                 style={{
                   background: '#FFFFFF',
                   border: 'none',
-                  borderRadius: 16,
-                  padding: '0 14px',
-                  height: 52,
+                  borderRadius: 'clamp(13px, 1.75lvh, 16px)',
+                  padding: '0 clamp(12px, 3.4vw, 15px)',
+                  height: 'clamp(42px, 5.4lvh, 50px)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 12,
+                  gap: 'clamp(9px, 2.8vw, 12px)',
                   cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.12)'
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.11)'
                 }}
               >
-                <span style={{ fontSize: 21 }}>{btn.icon}</span>
-                <span style={{ fontSize: 15, fontWeight: 900, color: '#1E293B' }}>{btn.label}</span>
+                <span style={{ fontSize: 'clamp(19px, 2.5lvh, 23px)' }}>{btn.icon}</span>
+                <span style={{ fontSize: 'clamp(14.5px, 1.95lvh, 17px)', fontWeight: 600, color: '#374151' }}>{btn.label}</span>
               </button>
             ))}
           </div>
         )}
       </div>
 
+      {/* 左下角獨立浮動 ☰ / ✕ 按鈕（直接位於 zIndex 60，高於 zIndex 35 毛玻璃遮罩與 zIndex 45 選單列，點擊必定切回關閉！） */}
+      <button
+        onClick={() => setIsProfileMenuOpen((v) => !v)}
+        style={{
+          ...glassBubbleStyle,
+          position: 'absolute',
+          left: 'clamp(14px, 4vw, 18px)',
+          bottom: 'max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
+          zIndex: 60,
+          width: 'clamp(48px, 6.2lvh, 56px)',
+          height: 'clamp(48px, 6.2lvh, 56px)',
+          color: '#FFFFFF'
+        }}
+        title={isProfileMenuOpen ? '關閉選單' : '主選單'}
+      >
+        {isProfileMenuOpen ? (
+          <svg width="56%" height="56%" viewBox="0 0 24 24" fill="none">
+            <path d="M6 6L18 18M18 6L6 18" stroke="#FFFFFF" strokeWidth="2.6" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <svg width="56%" height="56%" viewBox="0 0 24 24" fill="none">
+            <path d="M4.5 7H19.5M4.5 12H19.5M4.5 17H19.5" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" />
+          </svg>
+        )}
+      </button>
+
       {/* ==================== 下半部花海草地角色散步場景 ＋ 底部按鈕群（完全對照皮克敏主畫面） ==================== */}
       <div
         style={{
           flex: 1,
-          minHeight: 190,
+          minHeight: 0,
           position: 'relative',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '6px 16px max(16px, env(safe-area-inset-bottom))',
+          padding: '4px 16px max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
           overflow: 'hidden',
           zIndex: 5
         }}
@@ -2469,27 +2522,7 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* 左下角：☰ 主選單圓鈕（選單展開時自動變成 ✕ 關閉鈕，對照皮克敏圖二與圖四立體透明泡泡光澤！） */}
-        <button
-          onClick={() => setIsProfileMenuOpen((v) => !v)}
-          style={{
-            ...glassBubbleStyle,
-            position: 'absolute',
-            left: 16,
-            bottom: 'max(16px, env(safe-area-inset-bottom))',
-            zIndex: 50,
-            width: 54,
-            height: 54,
-            color: '#FFFFFF',
-            fontSize: 21,
-            fontWeight: 900
-          }}
-          title={isProfileMenuOpen ? '關閉選單' : '主選單'}
-        >
-          {isProfileMenuOpen ? '✕' : '☰'}
-        </button>
-
-        {/* 【正下方中央：🧭 地圖按鈕（立體透明泡泡光澤）】 */}
+        {/* 【正下方中央：🧭 地圖按鈕（立體透明泡泡光澤＋依比例放大內部圖示）】 */}
         <button
           onClick={() => {
             requestAndApplyRealLocation(false);
@@ -2503,33 +2536,33 @@ export const App: React.FC = () => {
             position: 'absolute',
             left: '50%',
             transform: 'translateX(-50%)',
-            bottom: 'max(16px, env(safe-area-inset-bottom))',
+            bottom: 'max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
             zIndex: 20,
-            width: 58,
-            height: 58,
+            width: 'clamp(50px, 6.5lvh, 58px)',
+            height: 'clamp(50px, 6.5lvh, 58px)',
             color: '#FFFFFF'
           }}
           title="開啟散步地圖"
         >
-          <svg width="26" height="26" viewBox="0 0 28 28">
-            <circle cx="14" cy="14" r="11" fill="none" stroke="#FFFFFF" strokeWidth="2" />
-            <polygon points="14,5 17.5,14 14,12.5 10.5,14" fill="#FFFFFF" />
-            <polygon points="14,23 17.5,14 14,15.5 10.5,14" fill="rgba(255,255,255,0.45)" />
-            <circle cx="14" cy="14" r="2" fill="#FFFFFF" />
+          <svg width="74%" height="74%" viewBox="0 0 28 28">
+            <circle cx="14" cy="14" r="11.2" fill="none" stroke="#FFFFFF" strokeWidth="2.1" />
+            <polygon points="14,4.2 18.2,14 14,12.2 9.8,14" fill="#FFFFFF" />
+            <polygon points="14,23.8 18.2,14 14,15.8 9.8,14" fill="rgba(255,255,255,0.45)" />
+            <circle cx="14" cy="14" r="2.2" fill="#FFFFFF" />
           </svg>
         </button>
 
-        {/* 右下角垂直三顆玻璃泡泡圓鈕：花朵 ｜ 油鍋 ｜ 口哨 */}
+        {/* 右下角垂直三顆玻璃泡泡圓鈕：花朵 ｜ 油鍋 ｜ 口哨（內部圖示比照皮克敏佔滿泡泡） */}
         <div
           style={{
             position: 'absolute',
-            right: 16,
-            bottom: 'max(14px, env(safe-area-inset-bottom))',
+            right: 'clamp(14px, 4vw, 18px)',
+            bottom: 'max(1.9lvh, env(safe-area-inset-bottom) + 5px)',
             zIndex: 20,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: 10
+            gap: 'clamp(7px, 1.05lvh, 11px)'
           }}
         >
           {/* 花朵（開啟種花模式／種花中顯示目前玻璃瓶） */}
@@ -2537,8 +2570,8 @@ export const App: React.FC = () => {
             onClick={() => setShowPlantingDrawer(true)}
             style={{
               ...glassBubbleStyle,
-              width: 54,
-              height: 54,
+              width: 'clamp(50px, 6.4lvh, 58px)',
+              height: 'clamp(50px, 6.4lvh, 58px)',
               border: isPlanting ? '2px solid #4ADE80' : glassBubbleStyle.border,
               position: 'relative'
             }}
@@ -2550,7 +2583,7 @@ export const App: React.FC = () => {
                   color={activePetalColor}
                   petalCount={petalInventory[activePetalVariant.id] || 0}
                   shape={activePetalVariant.shape}
-                  size={34}
+                  size={38}
                   uid="home_btn"
                 />
                 <span
@@ -2561,7 +2594,7 @@ export const App: React.FC = () => {
                     background: '#3F3F46',
                     color: '#FFFFFF',
                     fontSize: 10,
-                    fontWeight: 900,
+                    fontWeight: 700,
                     padding: '1px 5px',
                     borderRadius: 99,
                     border: '1.5px solid #FFFFFF'
@@ -2571,22 +2604,22 @@ export const App: React.FC = () => {
                 </span>
               </>
             ) : (
-              <svg width="32" height="32" viewBox="0 0 36 36">
-                <g transform="translate(13, 14)">
-                  <circle cx="0" cy="-6" r="4" fill="#FFFFFF" />
-                  <circle cx="5.5" cy="-2" r="4" fill="#FFFFFF" />
-                  <circle cx="3.5" cy="5" r="4" fill="#FFFFFF" />
-                  <circle cx="-3.5" cy="5" r="4" fill="#FFFFFF" />
-                  <circle cx="-5.5" cy="-2" r="4" fill="#FFFFFF" />
-                  <circle cx="0" cy="0" r="2.8" fill="#FACC15" />
+              <svg width="84%" height="84%" viewBox="0 0 36 36" style={{ filter: 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.22))' }}>
+                <g transform="translate(13.5, 14)">
+                  <circle cx="0" cy="-7" r="4.6" fill="#FFFFFF" />
+                  <circle cx="6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+                  <circle cx="4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+                  <circle cx="-4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+                  <circle cx="-6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+                  <circle cx="0" cy="0" r="3.4" fill="#FACC15" />
                 </g>
-                <g transform="translate(24, 23) scale(0.75)">
-                  <circle cx="0" cy="-6" r="4" fill="#FFFFFF" />
-                  <circle cx="5.5" cy="-2" r="4" fill="#FFFFFF" />
-                  <circle cx="3.5" cy="5" r="4" fill="#FFFFFF" />
-                  <circle cx="-3.5" cy="5" r="4" fill="#FFFFFF" />
-                  <circle cx="-5.5" cy="-2" r="4" fill="#FFFFFF" />
-                  <circle cx="0" cy="0" r="2.8" fill="#FACC15" />
+                <g transform="translate(24.5, 23.5) scale(0.76)">
+                  <circle cx="0" cy="-7" r="4.6" fill="#FFFFFF" />
+                  <circle cx="6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+                  <circle cx="4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+                  <circle cx="-4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+                  <circle cx="-6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+                  <circle cx="0" cy="0" r="3.4" fill="#FACC15" />
                 </g>
               </svg>
             )}
@@ -2597,16 +2630,17 @@ export const App: React.FC = () => {
             onClick={() => setIsPlanterOpen(true)}
             style={{
               ...glassBubbleStyle,
-              width: 54,
-              height: 54,
+              width: 'clamp(50px, 6.4lvh, 58px)',
+              height: 'clamp(50px, 6.4lvh, 58px)',
               position: 'relative'
             }}
             title="油鍋：炸瓜糰與起鍋地瓜球"
           >
-            <svg width="32" height="30" viewBox="0 0 36 32" fill="none">
-              <ellipse cx="18" cy="23" rx="13" ry="5" fill="#14B8A6" stroke="#FFFFFF" strokeWidth="1.4" />
-              <ellipse cx="18" cy="18.5" rx="9" ry="5.5" fill="#92400E" stroke="#FDE68A" strokeWidth="1.3" />
-              <circle cx="18" cy="15.5" r="4.5" fill="#FBBF24" stroke="#B45309" strokeWidth="1.2" />
+            <svg width="82%" height="82%" viewBox="0 0 36 34" fill="none" style={{ filter: 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.25))' }}>
+              <ellipse cx="18" cy="24.5" rx="14.5" ry="5.5" fill="#14B8A6" stroke="#FFFFFF" strokeWidth="1.5" />
+              <ellipse cx="18" cy="19.5" rx="10.5" ry="6" fill="#92400E" stroke="#FDE68A" strokeWidth="1.4" />
+              <circle cx="18" cy="15.5" r="5.5" fill="#FBBF24" stroke="#B45309" strokeWidth="1.3" />
+              <path d="M18 10C15 6 22 6 19.5 10" stroke="#4ADE80" strokeWidth="2.2" strokeLinecap="round" />
             </svg>
             {readySeedlingsCount > 0 && (
               <span
@@ -2617,7 +2651,7 @@ export const App: React.FC = () => {
                   background: '#EF4444',
                   color: '#FFF',
                   fontSize: 11,
-                  fontWeight: 900,
+                  fontWeight: 700,
                   padding: '1px 6px',
                   borderRadius: 99,
                   border: '2px solid #FFF'
@@ -2633,22 +2667,22 @@ export const App: React.FC = () => {
             onClick={() => setIsGardenOpen(true)}
             style={{
               ...glassBubbleStyle,
-              width: 62,
-              height: 62
+              width: 'clamp(58px, 7.6lvh, 68px)',
+              height: 'clamp(58px, 7.6lvh, 68px)'
             }}
             title="口哨：集合並餵食地瓜球"
           >
-            <svg width="34" height="28" viewBox="0 0 42 32" fill="none">
+            <svg width="84%" height="84%" viewBox="0 0 44 34" fill="none" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.26))' }}>
               <path
-                d="M8 10H26C31.5 10 35 13.8 35 19C35 24.5 30.8 28 25.5 28C21 28 17.5 25.2 16.5 21H7.5C6.1 21 5 19.9 5 18.5V13C5 11.3 6.3 10 8 10Z"
+                d="M7 9.5H27C33 9.5 37 13.8 37 19.5C37 25.5 32.2 29.5 26.2 29.5C21.2 29.5 17.5 26.2 16.5 21.8H6.5C5 21.8 4 20.6 4 19V12.8C4 11 5.3 9.5 7 9.5Z"
                 fill="#F8FAFC"
                 stroke="#334155"
-                strokeWidth="2"
+                strokeWidth="2.1"
                 strokeLinejoin="round"
               />
-              <circle cx="25.5" cy="19" r="4.5" fill="#94A3B8" stroke="#334155" strokeWidth="1.5" />
-              <path d="M35 15.5C37.5 15.5 39 17.2 39 19.5C39 21.8 37.5 23.5 35 23.5" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" />
-              <rect x="8" y="13" width="6" height="3" rx="1.5" fill="#38BDF8" />
+              <circle cx="26.5" cy="19.5" r="5" fill="#94A3B8" stroke="#334155" strokeWidth="1.6" />
+              <path d="M37 15.5C40 15.5 41.5 17.4 41.5 19.8C41.5 22.2 40 24.2 37 24.2" stroke="#475569" strokeWidth="2.3" strokeLinecap="round" />
+              <rect x="7.5" y="13" width="7" height="3.2" rx="1.6" fill="#38BDF8" />
             </svg>
           </button>
         </div>
