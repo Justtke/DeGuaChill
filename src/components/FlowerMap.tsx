@@ -718,14 +718,26 @@ function buildMushroomClusterSvg(capHex: string, spotHex: string): string {
 }
 
 const SURROUND_LEAFLET_ZOOM = 17;
-const SURROUND_MIN_ZOOM = 16.0;
+const SURROUND_MIN_ZOOM = 16.05;
+const SURROUND_DEFAULT_ZOOM = 17.0;
+const SURROUND_ARROW_THRESHOLD = 16.55;
 const SURROUND_MAX_ZOOM = 18.65;
-const OVERHEAD_MIN_ZOOM = 14.35;
-const OVERHEAD_MAX_ZOOM = 16.35;
+
+const OVERHEAD_MIN_ZOOM = 15.90;
+const OVERHEAD_DEFAULT_ZOOM = 16.45;
+const OVERHEAD_MAX_ZOOM = 17.10;
+
+function getTouchAngleDeg(t0: Touch, t1: Touch): number {
+  return (Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX) * 180) / Math.PI;
+}
+
+function normalizeAngleDeltaDeg(deg: number): number {
+  return ((deg + 180) % 360 + 360) % 360 - 180;
+}
 
 function computeSurroundMetrics(z: number) {
   const fracScale = Math.pow(2, z - SURROUND_LEAFLET_ZOOM);
-  const tiltDeg = Math.max(24, Math.min(39, 32 + (z - 17) * 4.2));
+  const tiltDeg = Math.max(25, Math.min(39, 32 + (z - 17) * 4.2));
   const totalScale = 1.18 * fracScale;
   const desiredPlayerScale = Math.max(
     0.78,
@@ -737,12 +749,13 @@ function computeSurroundMetrics(z: number) {
     Math.min(1.95, 1.05 * Math.pow(2, (z - 17) * 0.54))
   );
   const nodeScale = desiredNodeScale / totalScale;
-  return { fracScale, tiltDeg, totalScale, invScale, nodeScale };
+  const showArrowLod = z <= SURROUND_ARROW_THRESHOLD;
+  return { fracScale, tiltDeg, totalScale, invScale, nodeScale, showArrowLod };
 }
 
 function computeOverheadNodeMetrics(z: number) {
-  const bfScale = Math.max(0.24, Math.min(0.72, 0.42 * Math.pow(0.76, 15.0 - z)));
-  const mushRelScale = Math.max(0.56, Math.min(1.65, Math.pow(0.78, 15.0 - z)));
+  const bfScale = Math.max(0.32, Math.min(0.88, 0.56 * Math.pow(0.76, OVERHEAD_DEFAULT_ZOOM - z)));
+  const mushRelScale = Math.max(0.72, Math.min(1.85, 1.15 * Math.pow(0.78, OVERHEAD_DEFAULT_ZOOM - z)));
   return { bfScale, mushRelScale };
 }
 
@@ -754,7 +767,6 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   recenterSeq = 0,
   focusedTarget = null,
   onBearingChange,
-  onPerspectiveChange,
   myLat,
   myLng,
   isPlanting,
@@ -789,32 +801,58 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   const [isDraggingOrbit, setIsDraggingOrbit] = useState<boolean>(false);
   const [isPinching, setIsPinching] = useState<boolean>(false);
   const [activeCalloutId, setActiveCalloutId] = useState<string | null>(null);
-  const [surroundZoom, setSurroundZoom] = useState<number>(17.0);
-  const [overheadZoom, setOverheadZoom] = useState<number>(15.0);
+  const [surroundZoom, setSurroundZoom] = useState<number>(SURROUND_DEFAULT_ZOOM);
+  const [overheadZoom, setOverheadZoom] = useState<number>(OVERHEAD_DEFAULT_ZOOM);
 
-  const surroundZoomRef = useRef<number>(17.0);
-  const overheadZoomRef = useRef<number>(15.0);
+  const surroundZoomRef = useRef<number>(SURROUND_DEFAULT_ZOOM);
+  const overheadZoomRef = useRef<number>(OVERHEAD_DEFAULT_ZOOM);
   const hasPannedOverheadRef = useRef<boolean>(false);
-  const perspectiveSwitchCooldownRef = useRef<number>(0);
   const pinchRef = useRef<{
     active: boolean;
     startDist: number;
+    lastAngle: number;
+    cumAngleDelta: number;
+    twistOffset: number;
+    unlockedRotate: boolean;
+    startBearing: number;
+    lastReportedBearing: number;
     startSurroundZoom: number;
     startOverheadZoom: number;
     committedOverheadZoom: number;
   }>({
     active: false,
     startDist: 0,
-    startSurroundZoom: 17.0,
-    startOverheadZoom: 15,
-    committedOverheadZoom: 15
+    lastAngle: 0,
+    cumAngleDelta: 0,
+    twistOffset: 0,
+    unlockedRotate: false,
+    startBearing: 0,
+    lastReportedBearing: 0,
+    startSurroundZoom: SURROUND_DEFAULT_ZOOM,
+    startOverheadZoom: OVERHEAD_DEFAULT_ZOOM,
+    committedOverheadZoom: OVERHEAD_DEFAULT_ZOOM
+  });
+  const overheadPanRef = useRef<{
+    active: boolean;
+    blockedUntilLift: boolean;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    moved: boolean;
+  }>({
+    active: false,
+    blockedUntilLift: false,
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    moved: false
   });
   const playerCoordRef = useRef<{ lat: number; lng: number }>({ lat: myLat, lng: myLng });
   playerCoordRef.current = { lat: myLat, lng: myLng };
   const activePerspectiveRef = useRef<'surround' | 'overhead'>(cameraPerspective);
   activePerspectiveRef.current = cameraPerspective;
-  const onPerspectiveChangeRef = useRef(onPerspectiveChange);
-  onPerspectiveChangeRef.current = onPerspectiveChange;
 
   const activeBearing = onBearingChange ? cameraBearing : internalBearing;
   const activeBearingRef = useRef<number>(activeBearing);
@@ -829,24 +867,46 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     }
     const outer = outerRef.current;
     if (outer) {
+      outer.style.setProperty('--camera-bearing', `${bearingDeg.toFixed(1)}deg`);
+      outer.style.setProperty('--neg-camera-bearing', `${(-bearingDeg).toFixed(1)}deg`);
       outer.style.setProperty('--surround-inv-scale', m.invScale.toFixed(3));
       outer.style.setProperty('--surround-node-scale', m.nodeScale.toFixed(3));
+      outer.style.setProperty('--surround-walker-opacity', m.showArrowLod ? '0' : '1');
+      outer.style.setProperty('--surround-arrow-opacity', m.showArrowLod ? '1' : '0');
     }
   };
 
-  const applyOverheadDomTransform = (targetZ: number, committedZ: number) => {
+  const applyOverheadDomTransform = (
+    targetZ: number,
+    committedZ: number,
+    bearingDeg = activeBearingRef.current
+  ) => {
     const pinchScale = Math.pow(2, targetZ - committedZ);
     const el = containerRef.current;
     if (el) {
       el.style.transition = 'none';
-      el.style.transform = Math.abs(pinchScale - 1) < 0.0005 ? 'scale(1)' : `scale(${pinchScale.toFixed(4)})`;
+      el.style.transform =
+        Math.abs(pinchScale - 1) < 0.0005
+          ? `rotate(${bearingDeg.toFixed(1)}deg) scale(1)`
+          : `rotate(${bearingDeg.toFixed(1)}deg) scale(${pinchScale.toFixed(4)})`;
     }
     const { bfScale, mushRelScale } = computeOverheadNodeMetrics(targetZ);
     const outer = outerRef.current;
     if (outer) {
+      outer.style.setProperty('--camera-bearing', `${bearingDeg.toFixed(1)}deg`);
+      outer.style.setProperty('--neg-camera-bearing', `${(-bearingDeg).toFixed(1)}deg`);
       outer.style.setProperty('--overhead-bf-scale', (bfScale / pinchScale).toFixed(3));
       outer.style.setProperty('--overhead-mush-rel-scale', (mushRelScale / pinchScale).toFixed(3));
     }
+  };
+
+  const panOverheadByScreenDelta = (map: L.Map, dx: number, dy: number) => {
+    const rad = (activeBearingRef.current * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const mx = dx * cos + dy * sin;
+    const my = -dx * sin + dy * cos;
+    map.panBy([-mx, -my], { animate: false, noMoveStart: true });
   };
 
   useEffect(() => {
@@ -954,8 +1014,8 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       zoomDelta: 0.1,
       zoomControl: false,
       attributionControl: false,
-      dragging: !isMini && cameraPerspective === 'overhead',
-      // 禁用 Leaflet 原生游標縮放與 CSS zoomAnimation，改由皮克敏無段縮放引擎接管
+      dragging: false,
+      // 禁用 Leaflet 原生游標縮放、拖曳與 CSS zoomAnimation，改由散步/鳥瞰獨立雙手勢模組接管
       scrollWheelZoom: false,
       doubleClickZoom: false,
       touchZoom: false,
@@ -998,17 +1058,13 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     }, 200);
 
     if (!isMini) {
-      map.on('dragstart', () => {
-        if (activePerspectiveRef.current === 'overhead') {
-          hasPannedOverheadRef.current = true;
-        }
-      });
       map.on('moveend', () => {
+        if (pinchRef.current.active || overheadPanRef.current.active) return;
         const c = map.getCenter();
         setViewCenter({ lat: c.lat, lng: c.lng });
       });
       map.on('click', () => {
-        if (orbitDragRef.current.moved) return;
+        if (orbitDragRef.current.moved || overheadPanRef.current.moved) return;
         setActiveCalloutId(null);
       });
     }
@@ -1023,7 +1079,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     };
   }, []);
 
-  // 皮克敏式中心鎖定滾輪縮放：周圍視角永遠以玩家為中心平滑縮放並自適應切換俯瞰；俯瞰視角亦保持置中縮放不偏移！
+  // 散步（3D 周圍）與鳥瞰（2D 俯瞰）兩套獨立相機模組：各自分別縮放與平移/旋轉，絕不在縮放時互相跨模式切換！
   useEffect(() => {
     const el = outerRef.current;
     if (!el || isMini) return;
@@ -1034,48 +1090,25 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       const map = mapRef.current;
       if (!map) return;
 
-      const now = Date.now();
       const p = playerCoordRef.current;
 
       if (activePerspectiveRef.current === 'surround') {
         const rawStep = e.deltaY < 0 ? 0.18 : -0.18;
-        const nextZoom = surroundZoomRef.current + rawStep;
-
-        if (nextZoom < SURROUND_MIN_ZOOM && onPerspectiveChangeRef.current) {
-          if (now - perspectiveSwitchCooldownRef.current > 260) {
-            perspectiveSwitchCooldownRef.current = now;
-            hasPannedOverheadRef.current = false;
-            const matchedZoom = SURROUND_MIN_ZOOM - 0.1;
-            overheadZoomRef.current = matchedZoom;
-            setOverheadZoom(matchedZoom);
-            onPerspectiveChangeRef.current('overhead');
-          }
-          return;
-        }
-
-        const clamped = Math.max(SURROUND_MIN_ZOOM, Math.min(SURROUND_MAX_ZOOM, Number(nextZoom.toFixed(3))));
+        const clamped = Math.max(
+          SURROUND_MIN_ZOOM,
+          Math.min(SURROUND_MAX_ZOOM, Number((surroundZoomRef.current + rawStep).toFixed(3)))
+        );
         surroundZoomRef.current = clamped;
         applySurroundDomTransform(clamped, activeBearingRef.current);
         setSurroundZoom(clamped);
       } else {
-        const rawStep = e.deltaY < 0 ? 0.2 : -0.2;
-        const nextZoom = overheadZoomRef.current + rawStep;
-
-        if (nextZoom > OVERHEAD_MAX_ZOOM && onPerspectiveChangeRef.current) {
-          if (now - perspectiveSwitchCooldownRef.current > 260) {
-            perspectiveSwitchCooldownRef.current = now;
-            hasPannedOverheadRef.current = false;
-            const matchedZoom = OVERHEAD_MAX_ZOOM - 0.1;
-            surroundZoomRef.current = matchedZoom;
-            setSurroundZoom(matchedZoom);
-            onPerspectiveChangeRef.current('surround');
-          }
-          return;
-        }
-
-        const clamped = Math.max(OVERHEAD_MIN_ZOOM, Math.min(OVERHEAD_MAX_ZOOM, Number(nextZoom.toFixed(3))));
+        const rawStep = e.deltaY < 0 ? 0.16 : -0.16;
+        const clamped = Math.max(
+          OVERHEAD_MIN_ZOOM,
+          Math.min(OVERHEAD_MAX_ZOOM, Number((overheadZoomRef.current + rawStep).toFixed(3)))
+        );
         overheadZoomRef.current = clamped;
-        applyOverheadDomTransform(clamped, clamped);
+        applyOverheadDomTransform(clamped, clamped, activeBearingRef.current);
         setOverheadZoom(clamped);
 
         if (!hasPannedOverheadRef.current) {
@@ -1088,123 +1121,166 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     };
 
     const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 2) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const map = mapRef.current;
-      orbitDragRef.current.active = false;
-      if (containerRef.current) {
-        containerRef.current.style.transition = 'none';
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        orbitDragRef.current.active = false;
+        overheadPanRef.current.active = false;
+        overheadPanRef.current.blockedUntilLift = true;
+        if (containerRef.current) {
+          containerRef.current.style.transition = 'none';
+        }
+        setIsDraggingOrbit(false);
+        setIsPinching(true);
+        const d = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY
+        );
+        const angle = getTouchAngleDeg(e.touches[0], e.touches[1]);
+        pinchRef.current = {
+          active: true,
+          startDist: Math.max(12, d),
+          lastAngle: angle,
+          cumAngleDelta: 0,
+          twistOffset: 0,
+          unlockedRotate: false,
+          startBearing: activeBearingRef.current,
+          lastReportedBearing: activeBearingRef.current,
+          startSurroundZoom: surroundZoomRef.current,
+          startOverheadZoom: overheadZoomRef.current,
+          committedOverheadZoom: overheadZoomRef.current
+        };
+      } else if (
+        e.touches.length === 1 &&
+        activePerspectiveRef.current === 'overhead' &&
+        !pinchRef.current.active &&
+        !overheadPanRef.current.blockedUntilLift
+      ) {
+        const t = e.touches[0];
+        overheadPanRef.current = {
+          active: true,
+          blockedUntilLift: false,
+          startX: t.clientX,
+          startY: t.clientY,
+          lastX: t.clientX,
+          lastY: t.clientY,
+          moved: false
+        };
       }
-      setIsDraggingOrbit(false);
-      setIsPinching(true);
-      if (map && activePerspectiveRef.current === 'overhead') {
-        map.dragging.disable();
-      }
-      const d = Math.hypot(
-        e.touches[1].clientX - e.touches[0].clientX,
-        e.touches[1].clientY - e.touches[0].clientY
-      );
-      pinchRef.current = {
-        active: true,
-        startDist: Math.max(12, d),
-        startSurroundZoom: surroundZoomRef.current,
-        startOverheadZoom: overheadZoomRef.current,
-        committedOverheadZoom: overheadZoomRef.current
-      };
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (!pinchRef.current.active || e.touches.length !== 2) return;
-      e.preventDefault();
-      e.stopPropagation();
       const map = mapRef.current;
       if (!map) return;
 
-      const d = Math.hypot(
-        e.touches[1].clientX - e.touches[0].clientX,
-        e.touches[1].clientY - e.touches[0].clientY
-      );
-      const scaleRatio = Math.max(0.2, Math.min(5, d / pinchRef.current.startDist));
-      const zoomDelta = Math.log2(scaleRatio);
-      const now = Date.now();
-      const p = playerCoordRef.current;
+      if (pinchRef.current.active && e.touches.length === 2) {
+        e.preventDefault();
+        e.stopPropagation();
 
-      if (activePerspectiveRef.current === 'surround') {
-        const nextZoom = pinchRef.current.startSurroundZoom + zoomDelta;
-        if (nextZoom < SURROUND_MIN_ZOOM && onPerspectiveChangeRef.current) {
-          if (now - perspectiveSwitchCooldownRef.current > 260) {
-            perspectiveSwitchCooldownRef.current = now;
-            hasPannedOverheadRef.current = false;
-            const matchedZoom = SURROUND_MIN_ZOOM - 0.1;
-            overheadZoomRef.current = matchedZoom;
-            pinchRef.current.startDist = Math.max(12, d);
-            pinchRef.current.startOverheadZoom = matchedZoom;
-            pinchRef.current.committedOverheadZoom = matchedZoom;
-            if (containerRef.current) {
-              containerRef.current.style.transform = 'scale(1)';
-            }
-            applyOverheadDomTransform(matchedZoom, matchedZoom);
-            setOverheadZoom(matchedZoom);
-            onPerspectiveChangeRef.current('overhead');
-          }
-          return;
+        const d = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY
+        );
+        const scaleRatio = Math.max(0.25, Math.min(4, d / pinchRef.current.startDist));
+        const zoomDelta = Math.log2(scaleRatio);
+
+        const angle = getTouchAngleDeg(e.touches[0], e.touches[1]);
+        pinchRef.current.cumAngleDelta += normalizeAngleDeltaDeg(angle - pinchRef.current.lastAngle);
+        pinchRef.current.lastAngle = angle;
+
+        if (!pinchRef.current.unlockedRotate && Math.abs(pinchRef.current.cumAngleDelta) > 5.5) {
+          pinchRef.current.unlockedRotate = true;
+          pinchRef.current.twistOffset = pinchRef.current.cumAngleDelta;
         }
-        const clamped = Math.max(SURROUND_MIN_ZOOM, Math.min(SURROUND_MAX_ZOOM, Number(nextZoom.toFixed(3))));
-        surroundZoomRef.current = clamped;
-        // 零 React re-render、零 Leaflet 跨層切磚：直接 GPU 寫入 DOM transform 與 CSS 變數達成 60-120fps 無段縮放
-        applySurroundDomTransform(clamped, activeBearingRef.current);
-      } else {
-        const targetFloat = pinchRef.current.startOverheadZoom + zoomDelta;
-        if (targetFloat > OVERHEAD_MAX_ZOOM && onPerspectiveChangeRef.current) {
-          if (now - perspectiveSwitchCooldownRef.current > 260) {
-            perspectiveSwitchCooldownRef.current = now;
-            hasPannedOverheadRef.current = false;
-            const matchedZoom = OVERHEAD_MAX_ZOOM - 0.1;
-            surroundZoomRef.current = matchedZoom;
-            pinchRef.current.startDist = Math.max(12, d);
-            pinchRef.current.startSurroundZoom = matchedZoom;
-            if (containerRef.current) {
-              containerRef.current.style.transform = 'none';
-            }
-            setSurroundZoom(matchedZoom);
-            onPerspectiveChangeRef.current('surround');
-          }
-          return;
-        }
-        const clamped = Math.max(OVERHEAD_MIN_ZOOM, Math.min(OVERHEAD_MAX_ZOOM, Number(targetFloat.toFixed(3))));
-        overheadZoomRef.current = clamped;
-        const pinchScale = Math.pow(2, clamped - pinchRef.current.committedOverheadZoom);
-        if (pinchScale < 0.48) {
-          pinchRef.current.committedOverheadZoom = clamped;
-          pinchRef.current.startOverheadZoom = clamped;
-          pinchRef.current.startDist = Math.max(12, d);
-          applyOverheadDomTransform(clamped, clamped);
-          if (!hasPannedOverheadRef.current) {
-            map.setView([p.lat, p.lng], clamped, { animate: false });
-          } else {
-            map.setZoom(clamped, { animate: false });
-          }
+        const effectiveTwist = pinchRef.current.unlockedRotate
+          ? pinchRef.current.cumAngleDelta - pinchRef.current.twistOffset
+          : 0;
+        const nextBearing =
+          (((pinchRef.current.startBearing + effectiveTwist) % 360) + 360) % 360;
+        activeBearingRef.current = nextBearing;
+
+        const p = playerCoordRef.current;
+
+        if (activePerspectiveRef.current === 'surround') {
+          const clamped = Math.max(
+            SURROUND_MIN_ZOOM,
+            Math.min(SURROUND_MAX_ZOOM, Number((pinchRef.current.startSurroundZoom + zoomDelta).toFixed(3)))
+          );
+          surroundZoomRef.current = clamped;
+          applySurroundDomTransform(clamped, nextBearing);
         } else {
-          // 手勢移動期間不呼叫 Leaflet setZoom（避免同步觸發 moveend 與圖磚重建），純 GPU scale
-          applyOverheadDomTransform(clamped, pinchRef.current.committedOverheadZoom);
+          const clamped = Math.max(
+            OVERHEAD_MIN_ZOOM,
+            Math.min(OVERHEAD_MAX_ZOOM, Number((pinchRef.current.startOverheadZoom + zoomDelta).toFixed(3)))
+          );
+          overheadZoomRef.current = clamped;
+          const pinchScale = Math.pow(2, clamped - pinchRef.current.committedOverheadZoom);
+          if (pinchScale < 0.7) {
+            pinchRef.current.committedOverheadZoom = clamped;
+            pinchRef.current.startOverheadZoom = clamped;
+            pinchRef.current.startDist = Math.max(12, d);
+            applyOverheadDomTransform(clamped, clamped, nextBearing);
+            if (!hasPannedOverheadRef.current) {
+              map.setView([p.lat, p.lng], clamped, { animate: false });
+            } else {
+              map.setZoom(clamped, { animate: false });
+            }
+          } else {
+            applyOverheadDomTransform(clamped, pinchRef.current.committedOverheadZoom, nextBearing);
+          }
+        }
+
+        if (
+          pinchRef.current.unlockedRotate &&
+          Math.abs(normalizeAngleDeltaDeg(nextBearing - pinchRef.current.lastReportedBearing)) >= 1.0
+        ) {
+          pinchRef.current.lastReportedBearing = nextBearing;
+          setBearingValue(nextBearing);
+        }
+        return;
+      }
+
+      if (
+        activePerspectiveRef.current === 'overhead' &&
+        overheadPanRef.current.active &&
+        e.touches.length === 1
+      ) {
+        const t = e.touches[0];
+        if (
+          !overheadPanRef.current.moved &&
+          Math.hypot(t.clientX - overheadPanRef.current.startX, t.clientY - overheadPanRef.current.startY) > 4
+        ) {
+          overheadPanRef.current.moved = true;
+          hasPannedOverheadRef.current = true;
+        }
+        if (overheadPanRef.current.moved) {
+          e.preventDefault();
+          e.stopPropagation();
+          const dx = t.clientX - overheadPanRef.current.lastX;
+          const dy = t.clientY - overheadPanRef.current.lastY;
+          overheadPanRef.current.lastX = t.clientX;
+          overheadPanRef.current.lastY = t.clientY;
+          panOverheadByScreenDelta(map, dx, dy);
         }
       }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
+      const map = mapRef.current;
+      const p = playerCoordRef.current;
+
       if (e.touches.length < 2 && pinchRef.current.active) {
+        const rotated = pinchRef.current.unlockedRotate;
         pinchRef.current.active = false;
         setIsPinching(false);
-        const map = mapRef.current;
-        const p = playerCoordRef.current;
+
         if (activePerspectiveRef.current === 'surround') {
           const finalZoom = Number(surroundZoomRef.current.toFixed(3));
           applySurroundDomTransform(finalZoom, activeBearingRef.current);
           setSurroundZoom(finalZoom);
         } else {
           const finalZoom = Number(overheadZoomRef.current.toFixed(3));
-          applyOverheadDomTransform(finalZoom, finalZoom);
+          applyOverheadDomTransform(finalZoom, finalZoom, activeBearingRef.current);
           if (map) {
             if (!hasPannedOverheadRef.current) {
               map.setView([p.lat, p.lng], finalZoom, { animate: false });
@@ -1212,9 +1288,27 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
             } else {
               map.setZoom(finalZoom, { animate: false });
             }
-            map.dragging.enable();
           }
           setOverheadZoom(finalZoom);
+        }
+
+        if (rotated) {
+          setBearingValue(activeBearingRef.current);
+        }
+      }
+
+      if (e.touches.length === 0) {
+        const wasMoved = overheadPanRef.current.moved;
+        overheadPanRef.current.active = false;
+        overheadPanRef.current.blockedUntilLift = false;
+        if (wasMoved && map) {
+          const c = map.getCenter();
+          setViewCenter({ lat: c.lat, lng: c.lng });
+          window.setTimeout(() => {
+            overheadPanRef.current.moved = false;
+          }, 60);
+        } else {
+          overheadPanRef.current.moved = false;
         }
       }
     };
@@ -1238,14 +1332,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     const map = mapRef.current;
     if (!map) return;
 
-    if (isMini) {
-      map.dragging.disable();
-    } else if (cameraPerspective === 'surround') {
-      map.dragging.disable();
-    } else {
-      map.dragging.enable();
-      setBearingValue(0);
-    }
+    map.dragging.disable();
 
     const perspectiveChanged = prevPerspectiveRef.current !== cameraPerspective;
     prevPerspectiveRef.current = cameraPerspective;
@@ -1261,7 +1348,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     if (cameraPerspective === 'surround') {
       applySurroundDomTransform(surroundZoomRef.current, activeBearingRef.current);
     } else if (!isMini) {
-      applyOverheadDomTransform(overheadZoomRef.current, overheadZoomRef.current);
+      applyOverheadDomTransform(overheadZoomRef.current, overheadZoomRef.current, activeBearingRef.current);
       if (pinchRef.current.active) {
         pinchRef.current.committedOverheadZoom = overheadZoomRef.current;
       }
@@ -1292,6 +1379,16 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     return () => window.clearTimeout(timer);
   }, [cameraPerspective, isMini]);
 
+  // 點擊右上角指北針回正北方 (0°) 或外部變更 bearing 時同步 DOM 變形
+  useEffect(() => {
+    if (isMini || pinchRef.current.active || orbitDragRef.current.active) return;
+    if (isSurround) {
+      applySurroundDomTransform(surroundZoomRef.current, activeBearing);
+    } else {
+      applyOverheadDomTransform(overheadZoomRef.current, overheadZoomRef.current, activeBearing);
+    }
+  }, [activeBearing, isSurround, isMini]);
+
   // 當玩家實際移動座標或按下 🎯 定位回正時，平滑移動鏡頭（不清空、不重繪既有圖磚，完全仿照皮克敏無閃爍體驗）
   useEffect(() => {
     const map = mapRef.current;
@@ -1306,20 +1403,24 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     if (recenterSeq > 0) {
       hasPannedOverheadRef.current = false;
       if (cameraPerspective === 'surround') {
-        surroundZoomRef.current = 17.0;
-        applySurroundDomTransform(17.0, 0);
-        setSurroundZoom(17.0);
+        surroundZoomRef.current = SURROUND_DEFAULT_ZOOM;
+        applySurroundDomTransform(SURROUND_DEFAULT_ZOOM, activeBearingRef.current);
+        setSurroundZoom(SURROUND_DEFAULT_ZOOM);
       } else {
-        overheadZoomRef.current = 15;
+        overheadZoomRef.current = OVERHEAD_DEFAULT_ZOOM;
         if (!isMini) {
-          applyOverheadDomTransform(15, 15);
+          applyOverheadDomTransform(OVERHEAD_DEFAULT_ZOOM, OVERHEAD_DEFAULT_ZOOM, activeBearingRef.current);
         }
-        setOverheadZoom(15);
+        setOverheadZoom(OVERHEAD_DEFAULT_ZOOM);
       }
-      const targetZoom = isMini ? 13 : cameraPerspective === 'surround' ? SURROUND_LEAFLET_ZOOM : 15;
+      const targetZoom = isMini ? 13 : cameraPerspective === 'surround' ? SURROUND_LEAFLET_ZOOM : OVERHEAD_DEFAULT_ZOOM;
       map.invalidateSize({ animate: false });
       map.setView([myLat, myLng], targetZoom, { animate: false });
       setViewCenter({ lat: myLat, lng: myLng });
+      return;
+    }
+
+    if (cameraPerspective === 'overhead' && hasPannedOverheadRef.current) {
       return;
     }
 
@@ -1342,7 +1443,8 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     if (!focusedTarget || !mapRef.current || isMini) return;
     const map = mapRef.current;
     hasPannedOverheadRef.current = true;
-    const targetZoom = cameraPerspective === 'surround' ? SURROUND_LEAFLET_ZOOM : Math.max(15, overheadZoomRef.current);
+    const targetZoom =
+      cameraPerspective === 'surround' ? SURROUND_LEAFLET_ZOOM : Math.max(OVERHEAD_DEFAULT_ZOOM, overheadZoomRef.current);
     map.invalidateSize({ animate: false });
     map.setView([focusedTarget.lat, focusedTarget.lng], targetZoom, { animate: false });
     setViewCenter({ lat: focusedTarget.lat, lng: focusedTarget.lng });
@@ -1351,7 +1453,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     }
   }, [focusedTarget?.seq]);
 
-  const showOverheadFlowers = overheadZoom >= 14.85;
+  const showOverheadFlowers = !isSurround;
   const relYawDeg = (((playerHeadingDeg ?? 0) + activeBearing) % 360 + 360) % 360;
   const quantizedRelYaw = Math.round(relYawDeg / 8) * 8;
   const quantizedHeading = Math.round((((playerHeadingDeg ?? 0) % 360) + 360) % 360 / 6) * 6;
@@ -1477,12 +1579,12 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       return;
     }
 
-    // ==================== 模式 B：互動地圖節點（大花 / 蘑菇 / 精緻種花叢 / 行政地名，隨 CSS 無段變數 60fps 滑順縮放） ====================
+    // ==================== 模式 B：互動地圖節點（大花 / 蘑菇 / 精緻種花叢 / 行政地名，隨 CSS 無段變數 60fps 滑順縮放與旋轉） ====================
     const uprightBillboardTransform = isSurround
       ? 'rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.36) scale(var(--surround-node-scale, 1))'
-      : 'scale(var(--overhead-bf-scale, 0.44))';
+      : 'rotate(var(--neg-camera-bearing, 0deg)) scale(var(--overhead-bf-scale, 0.56))';
 
-    // 0. 俯瞰視角稀疏地名
+    // 0. 俯瞰視角稀疏地名（雙指旋轉時維持文字正立可讀）
     if (!isSurround && placeLabels.length > 0) {
       placeLabels.forEach((p) => {
         const lblIcon = L.divIcon({
@@ -1493,6 +1595,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
             color: #1E293B;
             white-space: nowrap;
             text-align: center;
+            transform: rotate(var(--neg-camera-bearing, 0deg));
             text-shadow: -1.5px -1.5px 0 #FFF, 1.5px -1.5px 0 #FFF, -1.5px 1.5px 0 #FFF, 1.5px 1.5px 0 #FFF, 0 1px 3px rgba(0,0,0,0.28);
             pointer-events: none;
           ">${p.name}</div>`,
@@ -1564,7 +1667,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       const marker = L.marker([bf.lat, bf.lng], { icon: bfIcon }).addTo(group);
       if (onSelectBigFlower) {
         marker.on('click', () => {
-          if (orbitDragRef.current.moved) return;
+          if (orbitDragRef.current.moved || overheadPanRef.current.moved) return;
           onSelectBigFlower(bf);
         });
       }
@@ -1675,7 +1778,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
           align-items: flex-end;
           justify-content: center;
           overflow: visible;
-          transform: ${isSurround ? 'rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.24) scale(var(--surround-node-scale, 1))' : 'scale(var(--overhead-mush-rel-scale, 1))'};
+          transform: ${isSurround ? 'rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.24) scale(var(--surround-node-scale, 1))' : 'rotate(var(--neg-camera-bearing, 0deg)) scale(var(--overhead-mush-rel-scale, 1))'};
           transform-origin: 50% 85%;
           cursor: pointer;
         ">
@@ -1697,7 +1800,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       }).addTo(group);
 
       marker.on('click', (ev) => {
-        if (orbitDragRef.current.moved) return;
+        if (orbitDragRef.current.moved || overheadPanRef.current.moved) return;
         L.DomEvent.stopPropagation(ev);
         const targetEl = ev.originalEvent?.target as HTMLElement | null;
         if (targetEl?.closest?.('[data-mushroom-callout="true"]')) {
@@ -1780,6 +1883,12 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         .join('');
 
       const walkerSvg = buildDirectionalWalkingPlayerSvg(quantizedRelYaw, 42, 60);
+      const compactArrowSvg = `
+        <svg width="34" height="34" viewBox="0 0 36 36" style="overflow:visible;filter:drop-shadow(0 3px 5px rgba(0,0,0,0.44));">
+          <path d="M 18 3 L 30 30 L 18 23.5 L 6 30 Z" fill="#FFFFFF" stroke="#64748B" stroke-width="1.35" stroke-linejoin="round" />
+          <path d="M 18 3 L 18 23.5 L 6 30 Z" fill="rgba(226,232,240,0.44)" />
+        </svg>
+      `;
 
       const surroundPlayerIcon = L.divIcon({
         className: 'pikmin-surround-player',
@@ -1787,19 +1896,40 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
           position: relative;
           width: 110px;
           height: 100px;
-          transform: rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.36) scale(var(--surround-inv-scale, 1));
-          transform-origin: 50% 60%;
           pointer-events: none;
         ">
-          ${followersHtml}
           <div style="
             position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -78%);
-            z-index: 20;
+            inset: 0;
+            transform: rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.36) scale(var(--surround-inv-scale, 1));
+            transform-origin: 50% 60%;
+            opacity: var(--surround-walker-opacity, 1);
+            transition: opacity 0.14s ease;
           ">
-            ${walkerSvg}
+            ${followersHtml}
+            <div style="
+              position: absolute;
+              left: 50%;
+              top: 50%;
+              transform: translate(-50%, -78%);
+              z-index: 20;
+            ">
+              ${walkerSvg}
+            </div>
+          </div>
+          <div style="
+            position: absolute;
+            left: 55px;
+            top: 58px;
+            width: 34px;
+            height: 34px;
+            transform: translate(-50%, -50%) scale(calc(var(--surround-inv-scale, 1) * 1.15)) rotate(var(--player-heading, 0deg));
+            transform-origin: 50% 50%;
+            opacity: var(--surround-arrow-opacity, 0);
+            transition: opacity 0.14s ease;
+            z-index: 25;
+          ">
+            ${compactArrowSvg}
           </div>
         </div>`,
         iconSize: [110, 100],
@@ -1822,7 +1952,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
           <div style="
             position: absolute;
             inset: 0;
-            transform: rotate(${quantizedHeading}deg);
+            transform: rotate(var(--player-heading, ${quantizedHeading}deg));
             display: flex;
             align-items: flex-start;
             justify-content: center;
@@ -1848,6 +1978,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
             display: flex;
             align-items: flex-end;
             justify-content: center;
+            transform: rotate(var(--neg-camera-bearing, 0deg));
           ">
             <svg width="26" height="26" viewBox="0 0 48 48">
               <path d="M9 48 C10 34 38 34 39 48 Z" fill="#38BDF8" />
@@ -1878,49 +2009,93 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   ]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isSurround || !e.isPrimary || pinchRef.current.active) return;
-    orbitDragRef.current = {
-      active: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      startBearing: activeBearing,
-      moved: false
-    };
-    setIsDraggingOrbit(true);
+    if (isMini || pinchRef.current.active) return;
+    if (isSurround && e.isPrimary) {
+      orbitDragRef.current = {
+        active: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        startBearing: activeBearingRef.current,
+        moved: false
+      };
+      setIsDraggingOrbit(true);
+    } else if (!isSurround && e.pointerType === 'mouse' && e.button === 0) {
+      overheadPanRef.current = {
+        active: true,
+        blockedUntilLift: false,
+        startX: e.clientX,
+        startY: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        moved: false
+      };
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isSurround || !orbitDragRef.current.active) return;
-    const dx = e.clientX - orbitDragRef.current.startX;
-    const dy = e.clientY - orbitDragRef.current.startY;
-    if (Math.hypot(dx, dy) > 5) {
-      orbitDragRef.current.moved = true;
+    if (isSurround && orbitDragRef.current.active) {
+      const dx = e.clientX - orbitDragRef.current.startX;
+      const dy = e.clientY - orbitDragRef.current.startY;
+      if (Math.hypot(dx, dy) > 5) {
+        orbitDragRef.current.moved = true;
+      }
+      const nextBearing = (((orbitDragRef.current.startBearing + dx * 0.55) % 360) + 360) % 360;
+      activeBearingRef.current = nextBearing;
+      applySurroundDomTransform(surroundZoomRef.current, nextBearing);
+      setBearingValue(nextBearing);
+    } else if (!isSurround && e.pointerType === 'mouse' && overheadPanRef.current.active) {
+      const map = mapRef.current;
+      if (!map) return;
+      if (
+        !overheadPanRef.current.moved &&
+        Math.hypot(e.clientX - overheadPanRef.current.startX, e.clientY - overheadPanRef.current.startY) > 4
+      ) {
+        overheadPanRef.current.moved = true;
+        hasPannedOverheadRef.current = true;
+      }
+      if (overheadPanRef.current.moved) {
+        const dx = e.clientX - overheadPanRef.current.lastX;
+        const dy = e.clientY - overheadPanRef.current.lastY;
+        overheadPanRef.current.lastX = e.clientX;
+        overheadPanRef.current.lastY = e.clientY;
+        panOverheadByScreenDelta(map, dx, dy);
+      }
     }
-    const nextBearing = orbitDragRef.current.startBearing + dx * 0.55;
-    setBearingValue(nextBearing);
   };
 
   const handlePointerUpOrCancel = () => {
-    if (!orbitDragRef.current.active) return;
-    orbitDragRef.current.active = false;
-    setIsDraggingOrbit(false);
-    window.setTimeout(() => {
-      orbitDragRef.current.moved = false;
-    }, 60);
+    if (orbitDragRef.current.active) {
+      orbitDragRef.current.active = false;
+      setIsDraggingOrbit(false);
+      window.setTimeout(() => {
+        orbitDragRef.current.moved = false;
+      }, 60);
+    }
+    if (overheadPanRef.current.active) {
+      const wasMoved = overheadPanRef.current.moved;
+      overheadPanRef.current.active = false;
+      if (wasMoved && mapRef.current) {
+        const c = mapRef.current.getCenter();
+        setViewCenter({ lat: c.lat, lng: c.lng });
+      }
+      window.setTimeout(() => {
+        overheadPanRef.current.moved = false;
+      }, 60);
+    }
   };
 
-  // 使用 3200×3200 對稱正方形畫布並將玩家錨點定於畫面中間偏下方 (50%, 67%)，
-  // Leaflet 鎖定第 17 層、純 GPU CSS transform 與變數控制遠近至特寫（最高達 Panel 3 大尺寸），零切磚不卡頓！
+  // 散步模組：3400×3400 正方形畫布錨定 (50%, 67%)，Leaflet 鎖定 17 層並以純 GPU 伸縮；縮小至最小段時平滑切換為指向箭頭
+  // 鳥瞰模組：1536×1536 正方形畫布錨定 (50%, 50%)，同時支援雙指無段縮放 ([15.90, 17.10]) 與雙指 360° 旋轉
   const surroundMetrics = computeSurroundMetrics(surroundZoom);
   const { bfScale: overheadBfScale, mushRelScale: overheadMushRelScale } = computeOverheadNodeMetrics(overheadZoom);
 
   const mapTransformStyle: React.CSSProperties = isSurround
     ? {
         position: 'absolute',
-        width: '3200px',
-        height: '3200px',
-        left: 'calc(50% - 1600px)',
-        top: 'calc(67% - 1600px)',
+        width: '3400px',
+        height: '3400px',
+        left: 'calc(50% - 1700px)',
+        top: 'calc(67% - 1700px)',
         transform: `perspective(900px) rotateX(${surroundMetrics.tiltDeg.toFixed(1)}deg) rotateZ(${activeBearing.toFixed(1)}deg) scale(${surroundMetrics.totalScale.toFixed(3)})`,
         transformOrigin: '50% 50%',
         transition:
@@ -1940,13 +2115,16 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       }
     : {
         position: 'absolute',
-        left: '-60%',
-        top: '-60%',
-        width: '220%',
-        height: '220%',
-        transform: 'scale(1)',
+        width: '1536px',
+        height: '1536px',
+        left: 'calc(50% - 768px)',
+        top: 'calc(50% - 768px)',
+        transform: `rotate(${activeBearing.toFixed(1)}deg) scale(1)`,
         transformOrigin: '50% 50%',
-        transition: 'none'
+        transition:
+          isPinching
+            ? 'none'
+            : 'transform 0.16s cubic-bezier(0.22, 1, 0.36, 1)'
       };
 
   return (
@@ -1968,8 +2146,11 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
           touchAction: isMini ? 'auto' : 'none',
           '--camera-bearing': `${activeBearing.toFixed(1)}deg`,
           '--neg-camera-bearing': `${(-activeBearing).toFixed(1)}deg`,
+          '--player-heading': `${quantizedHeading}deg`,
           '--surround-inv-scale': `${surroundMetrics.invScale.toFixed(3)}`,
           '--surround-node-scale': `${surroundMetrics.nodeScale.toFixed(3)}`,
+          '--surround-walker-opacity': surroundMetrics.showArrowLod ? '0' : '1',
+          '--surround-arrow-opacity': surroundMetrics.showArrowLod ? '1' : '0',
           '--overhead-bf-scale': `${overheadBfScale.toFixed(3)}`,
           '--overhead-mush-rel-scale': `${overheadMushRelScale.toFixed(3)}`
         } as React.CSSProperties
@@ -1980,7 +2161,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         className={isMini ? 'pikmin-mini-footprint-map' : 'pikmin-clean-street-map'}
         style={mapTransformStyle}
       />
-      {/* 周圍 3D 模式頂端藍天遠景霧氣漸層（完全對照皮克敏圖三地平線氛圍） */}
+      {/* 周圍 3D 模式頂端藍天遠景霧氣漸層（完全對照皮克敏圖三/四地平線氛圍，兼顧最小縮放角落遮罩） */}
       {isSurround && (
         <div
           style={{
@@ -1990,7 +2171,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
             top: 0,
             height: '23%',
             background:
-              'linear-gradient(180deg, rgba(138, 198, 240, 0.96) 0%, rgba(164, 218, 236, 0.45) 52%, rgba(164, 218, 236, 0) 100%)',
+              'linear-gradient(180deg, rgba(138, 198, 240, 0.98) 0%, rgba(154, 212, 238, 0.92) 38%, rgba(164, 218, 236, 0.42) 66%, rgba(164, 218, 236, 0) 100%)',
             pointerEvents: 'none',
             zIndex: 420
           }}
