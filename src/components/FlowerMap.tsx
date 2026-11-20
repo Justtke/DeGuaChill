@@ -26,12 +26,13 @@ import {
   buildAuthenticPikminMushroomSvg,
   MUSHROOM_CARD_SVG_DIMS
 } from './PikminMushroomVisual';
-import { buildFullBodyWalkingPlayerSvg } from './WalkingPlayerAvatar';
+import { buildDirectionalWalkingPlayerSvg } from './WalkingPlayerAvatar';
 
 interface FlowerMapProps {
   mode: 'mini_footprint' | 'interactive';
   cameraPerspective?: 'surround' | 'overhead';
   cameraBearing?: number;
+  playerHeadingDeg?: number;
   recenterSeq?: number;
   focusedTarget?: { lat: number; lng: number; mushroomId?: string; seq: number } | null;
   onBearingChange?: (bearing: number) => void;
@@ -85,35 +86,14 @@ function drawCanvasGroundFlower(
 }
 
 interface InteractiveTileFields {
-  roadBlur: Uint8Array;
-  waterBlur: Uint8Array;
+  roadCrisp: Uint8Array;
+  waterCrisp: Uint8Array;
   parkMask: Uint8Array;
 }
 
-// 記憶體圖磚快取：將已解碼平滑化的 256x256 街廓密度場快取於記憶體中，切換視角或重開地圖時 0ms 瞬間渲染！
+// 記憶體圖磚快取：將已解碼去文字且邊界銳利的 256x256 街廓密度場快取於記憶體中
 const cachedInteractiveFields = new Map<string, InteractiveTileFields>();
 const cachedMiniTileImages = new Map<string, ImageData>();
-
-function smoothBox3x3(src: Uint8Array): Uint8Array {
-  const dst = new Uint8Array(65536);
-  for (let y = 0; y < 256; y++) {
-    const ym = y > 0 ? y - 1 : 0;
-    const yp = y < 255 ? y + 1 : 255;
-    const r0 = ym << 8;
-    const r1 = y << 8;
-    const r2 = yp << 8;
-    for (let x = 0; x < 256; x++) {
-      const xm = x > 0 ? x - 1 : 0;
-      const xp = x < 255 ? x + 1 : 255;
-      const sum =
-        src[r0 + xm] + src[r0 + x] + src[r0 + xp] +
-        src[r1 + xm] + src[r1 + x] + src[r1 + xp] +
-        src[r2 + xm] + src[r2 + x] + src[r2 + xp];
-      dst[r1 + x] = (sum / 9) | 0;
-    }
-  }
-  return dst;
-}
 
 function extractSmoothInteractiveFields(srcData: Uint8ClampedArray): InteractiveTileFields {
   const roadProb = new Uint8Array(65536);
@@ -130,42 +110,37 @@ function extractSmoothInteractiveFields(srcData: Uint8ClampedArray): Interactive
     const maxC = r > g ? (r > b ? r : b) : g > b ? g : b;
     const sat = maxC - minC;
 
-    // 1. 水域
     if (b > r + 10 && b > 160 && g > 148) {
-      waterProb[i] = Math.min(255, (((b - r - 8) / 28) * 255) | 0);
+      waterProb[i] = Math.min(255, (((b - r - 8) / 26) * 255) | 0);
       continue;
     }
 
-    // 2. 暖色系主幹道 / 高架 / 省道 / 黃白次幹道
     if (r >= 210 && g >= 120 && r - b >= 14) {
-      roadProb[i] = Math.min(255, (((r - b - 10) / 26) * 255) | 0);
+      roadProb[i] = Math.min(255, (((r - b - 8) / 22) * 255) | 0);
       continue;
     }
 
-    // 3. 公園綠地
     if (g > r + 6 && g > b + 6 && g >= 145) {
       parkMask[i] = 1;
       continue;
     }
 
-    // 4. 文字筆畫 / POI 圖示（稍後依半徑 5px 鄰域精準修補，不開方洞！）
     if (maxC < 175 && sat < 36) {
       isText[i] = 1;
       continue;
     }
 
-    // 5. 純白柏油道路（排除建築灰棕 #d9d0c9 與一般土地 #f2efe9）
     if (minC >= 249 && maxC >= 251) {
-      roadProb[i] = Math.min(255, (((minC - 247) / 7) * 255) | 0);
+      roadProb[i] = Math.min(255, (((minC - 247) / 6) * 255) | 0);
     }
   }
 
-  // 僅針對被偵測為文字／線條的像素做半徑 5px 鄰域無縫修補
+  // 精準修補壓在道路／河川上的地名筆畫（不開方形孔洞）
   const healedRoad = new Uint8Array(roadProb);
   const healedWater = new Uint8Array(waterProb);
   const ringOffsets = [
-    [-5, 0], [5, 0], [0, -5], [0, 5],
-    [-4, -4], [4, -4], [-4, 4], [4, 4]
+    [-4, 0], [4, 0], [0, -4], [0, 4],
+    [-3, -3], [3, -3], [-3, 3], [3, 3]
   ];
 
   for (let y = 0; y < 256; y++) {
@@ -189,18 +164,77 @@ function extractSmoothInteractiveFields(srcData: Uint8ClampedArray): Interactive
         }
       }
       if (valid > 0) {
-        const avgW = wSum / valid;
-        const avgR = rSum / valid;
-        if (avgW >= 110) healedWater[idx] = 255;
-        else if (avgR >= 125) healedRoad[idx] = 255;
+        if (wSum / valid >= 115) healedWater[idx] = 255;
+        else if (rSum / valid >= 125) healedRoad[idx] = 255;
       }
     }
   }
 
-  // 兩道 3x3 平滑濾波（消除建築物白邊與孤立雜訊點、柔化道路曲線抗鋸齒）
-  const roadBlur = smoothBox3x3(smoothBox3x3(healedRoad));
-  const waterBlur = smoothBox3x3(smoothBox3x3(healedWater));
-  return { roadBlur, waterBlur, parkMask };
+  // 僅剔除 1~2px 孤立白點雜訊，完整保留所有直角轉彎與細街巷銳利邊界！
+  const roadDespeckled = new Uint8Array(healedRoad);
+  const waterDespeckled = new Uint8Array(healedWater);
+  for (let y = 1; y < 255; y++) {
+    const yOff = y << 8;
+    for (let x = 1; x < 255; x++) {
+      const idx = yOff + x;
+      if (healedRoad[idx] > 110) {
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const nyOff = (y + dy) << 8;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            if (healedRoad[nyOff + x + dx] > 96) n++;
+          }
+        }
+        if (n <= 2) roadDespeckled[idx] = 0;
+      }
+      if (healedWater[idx] > 110) {
+        let wn = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const nyOff = (y + dy) << 8;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            if (healedWater[nyOff + x + dx] > 96) wn++;
+          }
+        }
+        if (wn <= 2) waterDespeckled[idx] = 0;
+      }
+    }
+  }
+
+  // 極輕微十字柔化 (權重 2:1) 消除樓梯鋸齒感但不糊掉線條
+  const roadCrisp = new Uint8Array(65536);
+  const waterCrisp = new Uint8Array(65536);
+  for (let y = 0; y < 256; y++) {
+    const ym = y > 0 ? y - 1 : 0;
+    const yp = y < 255 ? y + 1 : 255;
+    const r0 = ym << 8;
+    const r1 = y << 8;
+    const r2 = yp << 8;
+    for (let x = 0; x < 256; x++) {
+      const xm = x > 0 ? x - 1 : 0;
+      const xp = x < 255 ? x + 1 : 255;
+      const idx = r1 + x;
+      roadCrisp[idx] =
+        ((roadDespeckled[idx] * 2 +
+          roadDespeckled[r1 + xm] +
+          roadDespeckled[r1 + xp] +
+          roadDespeckled[r0 + x] +
+          roadDespeckled[r2 + x]) /
+          6) |
+        0;
+      waterCrisp[idx] =
+        ((waterDespeckled[idx] * 2 +
+          waterDespeckled[r1 + xm] +
+          waterDespeckled[r1 + xp] +
+          waterDespeckled[r0 + x] +
+          waterDespeckled[r2 + x]) /
+          6) |
+        0;
+    }
+  }
+
+  return { roadCrisp, waterCrisp, parkMask };
 }
 
 /**
@@ -287,45 +321,88 @@ function paintSmoothInteractiveTileToCanvas(
   coords: L.Coords,
   isSurround: boolean
 ) {
-  const { roadBlur, waterBlur, parkMask } = fields;
-  const outImg = ctx.createImageData(256, 256);
+  const { roadCrisp, waterCrisp, parkMask } = fields;
+  const outImg = ctx.createImageData(512, 512);
   const dst = outImg.data;
 
-  for (let i = 0; i < 65536; i++) {
-    const p = i << 2;
-    const wRaw = waterBlur[i];
-    if (wRaw >= 88) {
-      const wT = Math.min(1, (wRaw - 88) / 96);
-      const baseG_R = parkMask[i] ? 86 : 102;
-      const baseG_G = parkMask[i] ? 174 : 185;
-      const baseG_B = parkMask[i] ? 78 : 89;
-      dst[p] = Math.round(baseG_R * (1 - wT) + 125 * wT);
-      dst[p + 1] = Math.round(baseG_G * (1 - wT) + 211 * wT);
-      dst[p + 2] = Math.round(baseG_B * (1 - wT) + 252 * wT);
-      dst[p + 3] = 255;
-      continue;
-    }
+  for (let oy = 0; oy < 512; oy++) {
+    const sy = oy * 0.5;
+    const y0 = sy | 0;
+    const y1 = y0 < 255 ? y0 + 1 : 255;
+    const wy = sy - y0;
+    const row0 = y0 << 8;
+    const row1 = y1 << 8;
+    const outRow = oy * 512;
 
-    const rRaw = roadBlur[i];
-    if (rRaw <= 76) {
-      // 平整完整的皮克敏翠綠草地街廓（過濾所有孤立雜訊點）
-      dst[p] = parkMask[i] ? 86 : 102;
-      dst[p + 1] = parkMask[i] ? 174 : 185;
-      dst[p + 2] = parkMask[i] ? 78 : 89;
-      dst[p + 3] = 255;
-    } else if (rRaw < 138) {
-      // 柔和路緣過度帶（草地亮緣 -> 暖卡其路緣 -> 奶油道路）
-      const edgeT = (rRaw - 76) / 62;
-      dst[p] = Math.round(126 * (1 - edgeT) + 216 * edgeT);
-      dst[p + 1] = Math.round(198 * (1 - edgeT) + 212 * edgeT);
-      dst[p + 2] = Math.round(112 * (1 - edgeT) + 178 * edgeT);
-      dst[p + 3] = 255;
-    } else {
-      const roadT = Math.min(1, (rRaw - 138) / 48);
-      dst[p] = Math.round(216 * (1 - roadT) + 245 * roadT);
-      dst[p + 1] = Math.round(212 * (1 - roadT) + 241 * roadT);
-      dst[p + 2] = Math.round(178 * (1 - roadT) + 216 * roadT);
-      dst[p + 3] = 255;
+    for (let ox = 0; ox < 512; ox++) {
+      const sx = ox * 0.5;
+      const x0 = sx | 0;
+      const x1 = x0 < 255 ? x0 + 1 : 255;
+      const wx = sx - x0;
+
+      const i00 = row0 + x0;
+      const i10 = row0 + x1;
+      const i01 = row1 + x0;
+      const i11 = row1 + x1;
+
+      const isPark = parkMask[i00];
+      const baseR = isPark ? 84 : 98;
+      const baseG = isPark ? 168 : 182;
+      const baseB = isPark ? 74 : 86;
+
+      const wVal =
+        (waterCrisp[i00] * (1 - wx) + waterCrisp[i10] * wx) * (1 - wy) +
+        (waterCrisp[i01] * (1 - wx) + waterCrisp[i11] * wx) * wy;
+
+      const p = (outRow + ox) << 2;
+      if (wVal >= 112) {
+        const wT = Math.min(1, (wVal - 112) / 36);
+        dst[p] = Math.round(baseR * (1 - wT) + 122 * wT);
+        dst[p + 1] = Math.round(baseG * (1 - wT) + 208 * wT);
+        dst[p + 2] = Math.round(baseB * (1 - wT) + 252 * wT);
+        dst[p + 3] = 255;
+        continue;
+      }
+
+      const rVal =
+        (roadCrisp[i00] * (1 - wx) + roadCrisp[i10] * wx) * (1 - wy) +
+        (roadCrisp[i01] * (1 - wx) + roadCrisp[i11] * wx) * wy;
+
+      if (rVal < 72) {
+        // 銳利乾淨的皮克敏草地街廓，貼道路 2px 處保留細緻亮綠草緣
+        const ym2 = y0 > 1 ? y0 - 2 : 0;
+        const yp2 = y0 < 254 ? y0 + 2 : 255;
+        const xm2 = x0 > 1 ? x0 - 2 : 0;
+        const xp2 = x0 < 254 ? x0 + 2 : 255;
+        const nearRoad =
+          roadCrisp[row0 + xm2] > 135 ||
+          roadCrisp[row0 + xp2] > 135 ||
+          roadCrisp[(ym2 << 8) + x0] > 135 ||
+          roadCrisp[(yp2 << 8) + x0] > 135;
+        if (nearRoad) {
+          dst[p] = 132;
+          dst[p + 1] = 204;
+          dst[p + 2] = 120;
+        } else {
+          dst[p] = baseR;
+          dst[p + 1] = baseG;
+          dst[p + 2] = baseB;
+        }
+        dst[p + 3] = 255;
+      } else if (rVal < 126) {
+        // 極窄細緻路緣線（約 0.6 CSS px 反鋸齒銜接）
+        const edgeT = (rVal - 72) / 54;
+        dst[p] = Math.round(132 * (1 - edgeT) + 216 * edgeT);
+        dst[p + 1] = Math.round(204 * (1 - edgeT) + 212 * edgeT);
+        dst[p + 2] = Math.round(120 * (1 - edgeT) + 174 * edgeT);
+        dst[p + 3] = 255;
+      } else {
+        const roadT = Math.min(1, (rVal - 126) / 28);
+        dst[p] = Math.round(216 * (1 - roadT) + 246 * roadT);
+        dst[p + 1] = Math.round(212 * (1 - roadT) + 242 * roadT);
+        dst[p + 2] = Math.round(174 * (1 - roadT) + 218 * roadT);
+        dst[p + 3] = 255;
+      }
     }
   }
 
@@ -344,29 +421,32 @@ function paintSmoothInteractiveTileToCanvas(
     const palA = palettes[tileHash % palettes.length];
     const palB = palettes[(tileHash >>> 4) % palettes.length];
 
-    for (let f = 0; f < 72; f++) {
+    ctx.save();
+    ctx.scale(2, 2);
+    for (let f = 0; f < 68; f++) {
       const fh = tileSeedHash(coords.x * 31 + f, coords.y * 37 + f, f + 99);
       const fx = 10 + (fh % 236);
       const fy = 10 + ((fh >>> 8) % 236);
       const idx = (fy << 8) + fx;
-      if (roadBlur[idx] > 32 || waterBlur[idx] > 32) continue;
+      if (roadCrisp[idx] > 40 || waterCrisp[idx] > 40) continue;
 
       const pal = (fh & 3) === 0 ? palB : palA;
-      const radius = 3.2 + (fh % 3) * 0.65;
+      const radius = 2.8 + (fh % 3) * 0.55;
 
       ctx.fillStyle = '#429639';
       ctx.beginPath();
-      ctx.arc(fx + 1, fy + 1.2, radius * 0.88, 0, Math.PI * 2);
+      ctx.arc(fx + 0.8, fy + 1.0, radius * 0.85, 0, Math.PI * 2);
       ctx.fill();
 
       drawCanvasGroundFlower(ctx, fx, fy, radius, pal.petal, pal.center);
     }
+    ctx.restore();
   }
 }
 
 /**
- * 即時 OpenStreetMap 像素著色與去文字圖磚引擎 (Real-Time OSM Pixel-Shader & Text-Eraser)
- * - 內建多 CDN 備援重試 + 記憶體快取，確保畫面四周與邊緣的所有圖磚 100% 完整載入，絕不缺塊！
+ * 即時 OpenStreetMap 像素著色與去文字圖磚引擎 (Real-Time OSM Retina-Crisp Shader)
+ * - 互動地圖採用 512×512 Retina 超採樣銳利繪製，徹底告別模糊感！
  */
 export function createPikminOsmShaderTileLayer(
   getState: () => {
@@ -376,9 +456,10 @@ export function createPikminOsmShaderTileLayer(
 ): L.GridLayer {
   const PikminShaderGrid = L.GridLayer.extend({
     createTile: function (coords: L.Coords, done: L.DoneCallback) {
+      const { isMini: initIsMini } = getState();
       const tile = document.createElement('canvas');
-      tile.width = 256;
-      tile.height = 256;
+      tile.width = initIsMini ? 256 : 512;
+      tile.height = initIsMini ? 256 : 512;
       tile.style.width = '256px';
       tile.style.height = '256px';
 
@@ -388,9 +469,8 @@ export function createPikminOsmShaderTileLayer(
         return tile;
       }
 
-      const { isMini: initIsMini } = getState();
-      ctx.fillStyle = initIsMini ? '#F5F6F1' : '#60B354';
-      ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = initIsMini ? '#F5F6F1' : '#62B656';
+      ctx.fillRect(0, 0, tile.width, tile.height);
 
       const cacheKey = `${coords.z}_${coords.x}_${coords.y}`;
       if (initIsMini) {
@@ -486,29 +566,42 @@ export function createPikminOsmShaderTileLayer(
 }
 
 /**
- * 繪製跟著玩家一起走的「立體地瓜球小隊成員」SVG
+ * 繪製跟著玩家一起走的「精緻迷你立體地瓜球小隊成員」SVG（比例依皮克敏地圖縮小至 20x25px，並依面向切換正反面）
  */
 function buildFollowingDeGuaCreatureSvg(
   variety: DeGuaVariety,
   leafStage: DeGuaCreature['leafStage'],
-  flowerHex: string
+  flowerHex: string,
+  showBack = false
 ): string {
   const vMeta = VARIETY_CATALOG[variety];
   const topSprout =
     leafStage === 'flower'
       ? `<g transform="translate(18, 6)">
-           <circle cx="0" cy="-4" r="3" fill="${flowerHex}" />
-           <circle cx="0" cy="4" r="3" fill="${flowerHex}" />
-           <circle cx="-4" cy="0" r="3" fill="${flowerHex}" />
-           <circle cx="4" cy="0" r="3" fill="${flowerHex}" />
+           <circle cx="0" cy="-4.2" r="3.2" fill="${flowerHex}" stroke="#94A3B8" stroke-width="0.6" />
+           <circle cx="0" cy="4.2" r="3.2" fill="${flowerHex}" stroke="#94A3B8" stroke-width="0.6" />
+           <circle cx="-4.2" cy="0" r="3.2" fill="${flowerHex}" stroke="#94A3B8" stroke-width="0.6" />
+           <circle cx="4.2" cy="0" r="3.2" fill="${flowerHex}" stroke="#94A3B8" stroke-width="0.6" />
            <circle cx="0" cy="0" r="2.3" fill="#FACC15" />
          </g>`
       : leafStage === 'bud'
-      ? `<circle cx="18" cy="6" r="4" fill="#F8FAFC" stroke="#C084FC" stroke-width="1.3" />`
-      : `<path d="M 18 9 C 11 3 10 11 18 11 C 26 11 25 3 18 9 Z" fill="#4ADE80" stroke="#15803D" stroke-width="1" />`;
+        ? `<circle cx="18" cy="6" r="4.2" fill="#F8FAFC" stroke="#C084FC" stroke-width="1.3" />`
+        : leafStage === 'bare'
+          ? `<circle cx="18" cy="7.5" r="2" fill="#65A30D" />`
+          : `<path d="M 18 9 C 10 2 9 11 18 11 C 27 11 26 2 18 9 Z" fill="#4ADE80" stroke="#15803D" stroke-width="1.1" />`;
+
+  const faceHtml = showBack
+    ? ''
+    : `
+      <circle cx="14" cy="25.5" r="2.6" fill="#FFFFFF" stroke="#1E293B" stroke-width="0.9" />
+      <circle cx="22" cy="25.5" r="2.6" fill="#FFFFFF" stroke="#1E293B" stroke-width="0.9" />
+      <circle cx="14.3" cy="25.5" r="1.3" fill="#0F172A" />
+      <circle cx="22.3" cy="25.5" r="1.3" fill="#0F172A" />
+      <path d="M 16 29.5 Q 18 31.2 20 29.5" stroke="#1E293B" stroke-width="1.1" stroke-linecap="round" fill="none" />
+    `;
 
   return `
-    <svg width="36" height="44" viewBox="0 0 36 44" style="overflow:visible;filter:drop-shadow(0 3px 4px rgba(0,0,0,0.28));">
+    <svg width="20" height="25" viewBox="0 0 36 44" style="overflow:visible;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.28));">
       <ellipse cx="18" cy="40" rx="9" ry="3" fill="rgba(0,0,0,0.22)" />
       <path d="M 18 17 Q 17 11 18 7" stroke="#15803D" stroke-width="2" stroke-linecap="round" fill="none" />
       ${topSprout}
@@ -518,11 +611,7 @@ function buildFollowingDeGuaCreatureSvg(
       <ellipse cx="14.5" cy="22" rx="4.5" ry="2.8" fill="${vMeta.spotColor}" opacity="0.55" />
       <ellipse cx="6" cy="26" rx="2.5" ry="1.8" fill="${vMeta.bodyColor}" stroke="#1E293B" stroke-width="0.8" />
       <ellipse cx="30" cy="26" rx="2.5" ry="1.8" fill="${vMeta.bodyColor}" stroke="#1E293B" stroke-width="0.8" />
-      <circle cx="14" cy="25.5" r="2.6" fill="#FFFFFF" stroke="#1E293B" stroke-width="0.9" />
-      <circle cx="22" cy="25.5" r="2.6" fill="#FFFFFF" stroke="#1E293B" stroke-width="0.9" />
-      <circle cx="14.3" cy="25.5" r="1.3" fill="#0F172A" />
-      <circle cx="22.3" cy="25.5" r="1.3" fill="#0F172A" />
-      <path d="M 16 29.5 Q 18 31.2 20 29.5" stroke="#1E293B" stroke-width="1.1" stroke-linecap="round" fill="none" />
+      ${faceHtml}
     </svg>
   `;
 }
@@ -533,21 +622,22 @@ function buildFollowingDeGuaCreatureSvg(
 function buildTallBigFlowerSvg(isBloomed: boolean, isBud: boolean, colorHex: string): string {
   if (isBloomed) {
     return `
-      <svg width="74" height="96" viewBox="0 0 74 96" style="overflow:visible;filter:drop-shadow(0 6px 8px rgba(0,0,0,0.28));">
-        <ellipse cx="37" cy="88" rx="14" ry="5" fill="rgba(0,0,0,0.22)" />
-        <path d="M 37 88 Q 34 62 37 32" stroke="#4ADE80" stroke-width="5.5" stroke-linecap="round" fill="none" />
-        <path d="M 36 66 C 22 60 18 70 35 72" fill="#22C55E" />
-        <path d="M 38 58 C 52 52 56 62 39 64" fill="#22C55E" />
-        <g transform="translate(37, 26)">
-          <ellipse cx="0" cy="-16" rx="7" ry="13" fill="${colorHex}" stroke="#CBD5E1" stroke-width="1" />
-          <ellipse cx="0" cy="16" rx="7" ry="13" fill="${colorHex}" stroke="#CBD5E1" stroke-width="1" />
-          <ellipse cx="-16" cy="0" rx="13" ry="7" fill="${colorHex}" stroke="#CBD5E1" stroke-width="1" />
-          <ellipse cx="16" cy="0" rx="13" ry="7" fill="${colorHex}" stroke="#CBD5E1" stroke-width="1" />
-          <ellipse cx="-11" cy="-11" rx="11" ry="6.5" transform="rotate(45 -11 -11)" fill="${colorHex}" />
-          <ellipse cx="11" cy="-11" rx="11" ry="6.5" transform="rotate(-45 11 -11)" fill="${colorHex}" />
-          <ellipse cx="-11" cy="11" rx="11" ry="6.5" transform="rotate(-45 -11 11)" fill="${colorHex}" />
-          <ellipse cx="11" cy="11" rx="11" ry="6.5" transform="rotate(45 11 11)" fill="${colorHex}" />
-          <circle cx="0" cy="0" r="9.5" fill="#FACC15" stroke="#CA8A04" stroke-width="1.5" />
+      <svg width="56" height="82" viewBox="0 0 60 88" style="overflow:visible;filter:drop-shadow(0 5px 7px rgba(0,0,0,0.26));">
+        <ellipse cx="30" cy="82" rx="11" ry="4" fill="rgba(0,0,0,0.2)" />
+        <path d="M 30 82 Q 28 54 30 24" stroke="#6EE7B7" stroke-width="4" stroke-linecap="round" fill="none" />
+        <path d="M 29 63 C 17 57 14 66 28 67" fill="#34D399" />
+        <path d="M 31 55 C 43 49 46 58 32 59" fill="#34D399" />
+        <g transform="translate(30, 21)">
+          <circle cx="0" cy="0" r="21" fill="${colorHex}" opacity="0.22" />
+          <ellipse cx="0" cy="-12" rx="5.5" ry="10.5" fill="${colorHex}" stroke="#94A3B8" stroke-width="0.9" />
+          <ellipse cx="0" cy="12" rx="5.5" ry="10.5" fill="${colorHex}" stroke="#94A3B8" stroke-width="0.9" />
+          <ellipse cx="-12" cy="0" rx="10.5" ry="5.5" fill="${colorHex}" stroke="#94A3B8" stroke-width="0.9" />
+          <ellipse cx="12" cy="0" rx="10.5" ry="5.5" fill="${colorHex}" stroke="#94A3B8" stroke-width="0.9" />
+          <ellipse cx="-8.5" cy="-8.5" rx="9" ry="5" transform="rotate(45 -8.5 -8.5)" fill="${colorHex}" stroke="#CBD5E1" stroke-width="0.6" />
+          <ellipse cx="8.5" cy="-8.5" rx="9" ry="5" transform="rotate(-45 8.5 -8.5)" fill="${colorHex}" stroke="#CBD5E1" stroke-width="0.6" />
+          <ellipse cx="-8.5" cy="8.5" rx="9" ry="5" transform="rotate(-45 -8.5 8.5)" fill="${colorHex}" stroke="#CBD5E1" stroke-width="0.6" />
+          <ellipse cx="8.5" cy="8.5" rx="9" ry="5" transform="rotate(45 8.5 8.5)" fill="${colorHex}" stroke="#CBD5E1" stroke-width="0.6" />
+          <circle cx="0" cy="0" r="7.5" fill="#FACC15" stroke="#CA8A04" stroke-width="1.2" />
         </g>
       </svg>
     `;
@@ -555,26 +645,51 @@ function buildTallBigFlowerSvg(isBloomed: boolean, isBud: boolean, colorHex: str
 
   if (isBud) {
     return `
-      <svg width="64" height="86" viewBox="0 0 64 86" style="overflow:visible;filter:drop-shadow(0 5px 7px rgba(0,0,0,0.25));">
-        <ellipse cx="32" cy="78" rx="12" ry="4.5" fill="rgba(0,0,0,0.2)" />
-        <path d="M 32 78 C 28 52 26 22 40 20 C 46 20 48 26 46 30" stroke="#34D399" stroke-width="5" stroke-linecap="round" fill="none" />
-        <path d="M 30 62 C 18 56 16 66 30 67" fill="#10B981" />
-        <g transform="translate(46, 32) rotate(20)">
-          <ellipse cx="0" cy="0" rx="9" ry="11" fill="#F8FAFC" stroke="#C084FC" stroke-width="2" />
-          <path d="M -7 -4 Q 0 -12 7 -4" fill="#86EFAC" />
+      <svg width="48" height="72" viewBox="0 0 54 80" style="overflow:visible;filter:drop-shadow(0 4px 6px rgba(0,0,0,0.22));">
+        <ellipse cx="27" cy="74" rx="9.5" ry="3.6" fill="rgba(0,0,0,0.18)" />
+        <path d="M 27 74 C 24 49 23 21 34 19 C 39 19 41 24 39 28" stroke="#34D399" stroke-width="4" stroke-linecap="round" fill="none" />
+        <path d="M 26 58 C 16 53 14 61 26 62" fill="#10B981" />
+        <g transform="translate(39, 29) rotate(20)">
+          <ellipse cx="0" cy="0" rx="7.5" ry="9.5" fill="#F8FAFC" stroke="#C084FC" stroke-width="1.8" />
+          <path d="M -6 -3 Q 0 -10 6 -3" fill="#86EFAC" />
         </g>
       </svg>
     `;
   }
 
   return `
-    <svg width="56" height="72" viewBox="0 0 56 72" style="overflow:visible;filter:drop-shadow(0 4px 6px rgba(0,0,0,0.22));">
-      <ellipse cx="28" cy="64" rx="11" ry="4" fill="rgba(0,0,0,0.2)" />
-      <path d="M 28 64 Q 27 46 28 32" stroke="#22C55E" stroke-width="4.5" stroke-linecap="round" fill="none" />
-      <path d="M 28 36 C 12 24 10 42 28 42" fill="#4ADE80" stroke="#15803D" stroke-width="1.5" />
-      <path d="M 28 36 C 44 24 46 42 28 42" fill="#22C55E" stroke="#15803D" stroke-width="1.5" />
+    <svg width="44" height="62" viewBox="0 0 50 70" style="overflow:visible;filter:drop-shadow(0 3px 5px rgba(0,0,0,0.2));">
+      <ellipse cx="25" cy="64" rx="9" ry="3.4" fill="rgba(0,0,0,0.18)" />
+      <path d="M 25 64 Q 24 46 25 32" stroke="#22C55E" stroke-width="3.8" stroke-linecap="round" fill="none" />
+      <path d="M 25 36 C 12 26 10 41 25 41" fill="#4ADE80" stroke="#15803D" stroke-width="1.3" />
+      <path d="M 25 36 C 38 26 40 41 25 41" fill="#22C55E" stroke="#15803D" stroke-width="1.3" />
     </svg>
   `;
+}
+
+function buildMicroPlantedFlowersSvg(petalHex: string, count: number, isSurround: boolean): string {
+  const dots = count >= 4 ? 5 : 3;
+  const spots = [
+    { x: 6, y: 12, r: 2.5 },
+    { x: 16, y: 8, r: 2.8 },
+    { x: 25, y: 13, r: 2.4 },
+    { x: 11, y: 17, r: 2.2 },
+    { x: 21, y: 18, r: 2.3 }
+  ].slice(0, dots);
+  const w = isSurround ? 30 : 18;
+  const h = isSurround ? 22 : 14;
+  const blossoms = spots
+    .map(
+      (s) => `
+      <g transform="translate(${s.x}, ${s.y})">
+        <circle cx="0" cy="-${s.r * 0.85}" r="${s.r * 0.72}" fill="${petalHex}" stroke="#94A3B8" stroke-width="0.35"/>
+        <circle cx="${s.r * 0.8}" cy="${s.r * 0.25}" r="${s.r * 0.72}" fill="${petalHex}" stroke="#94A3B8" stroke-width="0.35"/>
+        <circle cx="-${s.r * 0.8}" cy="${s.r * 0.25}" r="${s.r * 0.72}" fill="${petalHex}" stroke="#94A3B8" stroke-width="0.35"/>
+        <circle cx="0" cy="0" r="${s.r * 0.45}" fill="#FACC15"/>
+      </g>`
+    )
+    .join('');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 32 24" style="overflow:visible;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,0.22));">${blossoms}</svg>`;
 }
 
 /**
@@ -606,6 +721,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   mode,
   cameraPerspective = 'surround',
   cameraBearing = 0,
+  playerHeadingDeg = 0,
   recenterSeq = 0,
   focusedTarget = null,
   onBearingChange,
@@ -627,6 +743,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   const mapRef = useRef<L.Map | null>(null);
   const shaderLayerRef = useRef<L.GridLayer | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const playerGroupRef = useRef<L.LayerGroup | null>(null);
 
   const isMini = mode === 'mini_footprint';
   const isSurround = !isMini && cameraPerspective === 'surround';
@@ -641,14 +758,14 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   const [landmarkTick, setLandmarkTick] = useState<number>(0);
   const [internalBearing, setInternalBearing] = useState<number>(cameraBearing);
   const [isDraggingOrbit, setIsDraggingOrbit] = useState<boolean>(false);
+  const [isPinching, setIsPinching] = useState<boolean>(false);
   const [activeCalloutId, setActiveCalloutId] = useState<string | null>(null);
   const [surroundZoom, setSurroundZoom] = useState<number>(17.0);
-  const [overheadZoom, setOverheadZoom] = useState<number>(15);
+  const [overheadZoom, setOverheadZoom] = useState<number>(15.0);
 
   const surroundZoomRef = useRef<number>(17.0);
-  const overheadZoomRef = useRef<number>(15);
+  const overheadZoomRef = useRef<number>(15.0);
   const hasPannedOverheadRef = useRef<boolean>(false);
-  const wheelAccumRef = useRef<number>(0);
   const perspectiveSwitchCooldownRef = useRef<number>(0);
   const pinchRef = useRef<{
     active: boolean;
@@ -769,12 +886,14 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     const map = L.map(containerRef.current, {
       center: [myLat, myLng],
       zoom: targetZoom,
-      minZoom: isMini ? 12 : 13,
+      minZoom: isMini ? 12 : 12.6,
       maxZoom: 18,
+      zoomSnap: 0,
+      zoomDelta: 0.1,
       zoomControl: false,
       attributionControl: false,
       dragging: !isMini && cameraPerspective === 'overhead',
-      // 禁用 Leaflet 原生游標縮放與 CSS zoomAnimation，改由皮克敏中心鎖定縮放引擎接管
+      // 禁用 Leaflet 原生游標縮放與 CSS zoomAnimation，改由皮克敏無段縮放引擎接管
       scrollWheelZoom: false,
       doubleClickZoom: false,
       touchZoom: false,
@@ -790,8 +909,10 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     shaderLayerRef.current = shaderLayer;
 
     const group = L.layerGroup().addTo(map);
+    const pGroup = L.layerGroup().addTo(map);
     mapRef.current = map;
     layerGroupRef.current = group;
+    playerGroupRef.current = pGroup;
 
     // 監聽地圖容器尺寸變化，確保開啟或旋轉切換視角時四周與邊緣圖磚 100% 即時補齊，不會出現空白綠邊
     let ro: ResizeObserver | null = null;
@@ -855,21 +976,21 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       const p = playerCoordRef.current;
 
       if (activePerspectiveRef.current === 'surround') {
-        const rawStep = e.deltaY < 0 ? 0.22 : -0.22;
+        const rawStep = e.deltaY < 0 ? 0.18 : -0.18;
         const nextZoom = surroundZoomRef.current + rawStep;
 
-        if (nextZoom < 15.8 && onPerspectiveChangeRef.current) {
-          if (now - perspectiveSwitchCooldownRef.current > 350) {
+        if (nextZoom < 15.65 && onPerspectiveChangeRef.current) {
+          if (now - perspectiveSwitchCooldownRef.current > 240) {
             perspectiveSwitchCooldownRef.current = now;
             hasPannedOverheadRef.current = false;
-            overheadZoomRef.current = 15;
-            setOverheadZoom(15);
+            overheadZoomRef.current = 15.65;
+            setOverheadZoom(15.65);
             onPerspectiveChangeRef.current('overhead');
           }
           return;
         }
 
-        const clamped = Math.max(15.8, Math.min(18.2, Number(nextZoom.toFixed(2))));
+        const clamped = Math.max(15.65, Math.min(18.25, Number(nextZoom.toFixed(3))));
         const prevBase = Math.round(surroundZoomRef.current);
         const nextBase = Math.round(clamped);
         surroundZoomRef.current = clamped;
@@ -879,25 +1000,21 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
           setViewCenter({ lat: p.lat, lng: p.lng });
         }
       } else {
-        wheelAccumRef.current += e.deltaY;
-        if (Math.abs(wheelAccumRef.current) < 42) return;
-        const dir = wheelAccumRef.current < 0 ? 1 : -1;
-        wheelAccumRef.current = 0;
+        const rawStep = e.deltaY < 0 ? 0.2 : -0.2;
+        const nextZoom = overheadZoomRef.current + rawStep;
 
-        const nextZoom = overheadZoomRef.current + dir;
-        if (nextZoom > 17 && onPerspectiveChangeRef.current) {
-          if (now - perspectiveSwitchCooldownRef.current > 350) {
+        if (nextZoom > 16.15 && onPerspectiveChangeRef.current) {
+          if (now - perspectiveSwitchCooldownRef.current > 240) {
             perspectiveSwitchCooldownRef.current = now;
             hasPannedOverheadRef.current = false;
-            surroundZoomRef.current = 16.5;
-            setSurroundZoom(16.5);
+            surroundZoomRef.current = 16.15;
+            setSurroundZoom(16.15);
             onPerspectiveChangeRef.current('surround');
           }
           return;
         }
 
-        const clamped = Math.max(13, Math.min(17, nextZoom));
-        if (clamped === overheadZoomRef.current) return;
+        const clamped = Math.max(12.6, Math.min(16.15, Number(nextZoom.toFixed(3))));
         overheadZoomRef.current = clamped;
         setOverheadZoom(clamped);
 
@@ -915,6 +1032,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       const map = mapRef.current;
       orbitDragRef.current.active = false;
       setIsDraggingOrbit(false);
+      setIsPinching(true);
       if (map && activePerspectiveRef.current === 'overhead') {
         map.dragging.disable();
       }
@@ -941,25 +1059,27 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         e.touches[1].clientX - e.touches[0].clientX,
         e.touches[1].clientY - e.touches[0].clientY
       );
-      const scaleRatio = Math.max(0.25, Math.min(4, d / pinchRef.current.startDist));
+      const scaleRatio = Math.max(0.2, Math.min(5, d / pinchRef.current.startDist));
       const zoomDelta = Math.log2(scaleRatio);
       const now = Date.now();
       const p = playerCoordRef.current;
 
       if (activePerspectiveRef.current === 'surround') {
         const nextZoom = pinchRef.current.startSurroundZoom + zoomDelta;
-        if (nextZoom < 15.8 && onPerspectiveChangeRef.current) {
-          if (now - perspectiveSwitchCooldownRef.current > 350) {
+        if (nextZoom < 15.65 && onPerspectiveChangeRef.current) {
+          if (now - perspectiveSwitchCooldownRef.current > 240) {
             perspectiveSwitchCooldownRef.current = now;
-            pinchRef.current.active = false;
             hasPannedOverheadRef.current = false;
-            overheadZoomRef.current = 15;
-            setOverheadZoom(15);
+            const matchedZoom = 15.65;
+            overheadZoomRef.current = matchedZoom;
+            setOverheadZoom(matchedZoom);
+            pinchRef.current.startDist = Math.max(12, d);
+            pinchRef.current.startOverheadZoom = matchedZoom;
             onPerspectiveChangeRef.current('overhead');
           }
           return;
         }
-        const clamped = Math.max(15.8, Math.min(18.2, Number(nextZoom.toFixed(2))));
+        const clamped = Math.max(15.65, Math.min(18.25, Number(nextZoom.toFixed(3))));
         const prevBase = Math.round(surroundZoomRef.current);
         const nextBase = Math.round(clamped);
         surroundZoomRef.current = clamped;
@@ -970,19 +1090,20 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         }
       } else {
         const targetFloat = pinchRef.current.startOverheadZoom + zoomDelta;
-        if (targetFloat > 17.35 && onPerspectiveChangeRef.current) {
-          if (now - perspectiveSwitchCooldownRef.current > 350) {
+        if (targetFloat > 16.15 && onPerspectiveChangeRef.current) {
+          if (now - perspectiveSwitchCooldownRef.current > 240) {
             perspectiveSwitchCooldownRef.current = now;
-            pinchRef.current.active = false;
             hasPannedOverheadRef.current = false;
-            surroundZoomRef.current = 16.5;
-            setSurroundZoom(16.5);
+            const matchedZoom = 16.15;
+            surroundZoomRef.current = matchedZoom;
+            setSurroundZoom(matchedZoom);
+            pinchRef.current.startDist = Math.max(12, d);
+            pinchRef.current.startSurroundZoom = matchedZoom;
             onPerspectiveChangeRef.current('surround');
           }
           return;
         }
-        const clamped = Math.max(13, Math.min(17, Math.round(targetFloat)));
-        if (clamped === overheadZoomRef.current) return;
+        const clamped = Math.max(12.6, Math.min(16.15, Number(targetFloat.toFixed(3))));
         overheadZoomRef.current = clamped;
         setOverheadZoom(clamped);
         if (!hasPannedOverheadRef.current) {
@@ -997,6 +1118,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     const handleTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2 && pinchRef.current.active) {
         pinchRef.current.active = false;
+        setIsPinching(false);
         const map = mapRef.current;
         if (map && activePerspectiveRef.current === 'overhead') {
           map.dragging.enable();
@@ -1114,6 +1236,11 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     }
   }, [focusedTarget?.seq]);
 
+  const showOverheadFlowers = overheadZoom >= 14.4;
+  const relYawDeg = (((playerHeadingDeg ?? 0) + activeBearing) % 360 + 360) % 360;
+  const quantizedRelYaw = Math.round(relYawDeg / 8) * 8;
+  const quantizedHeading = Math.round((((playerHeadingDeg ?? 0) % 360) + 360) % 360 / 6) * 6;
+
   useEffect(() => {
     const group = layerGroupRef.current;
     if (!group) return;
@@ -1155,7 +1282,6 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         ];
       }
 
-      // 柔邊水彩綠探索霧雲（無硬邊圓框）
       trailPoints.forEach(([tLat, tLng], idx) => {
         const mistSize = idx === Math.floor(trailPoints.length / 2) ? 155 : 120;
         const mistIcon = L.divIcon({
@@ -1236,62 +1362,54 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       return;
     }
 
-    // ==================== 模式 B：互動地圖（圖一：周圍視角 360° 環景 vs 圖二：俯瞰視角） ====================
-    const overheadMushScale = Math.max(
-      0.2,
-      Math.min(0.62, 0.38 * Math.pow(0.72, 15 - overheadZoom))
-    );
-    const overheadBfScale = overheadMushScale / 0.42;
+    // ==================== 模式 B：互動地圖節點（大花 / 蘑菇 / 精緻種花叢 / 行政地名，隨 CSS 無段變數 60fps 滑順縮放） ====================
     const uprightBillboardTransform = isSurround
       ? 'rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.36) scale(var(--surround-node-scale, 1))'
-      : `scale(${(0.68 * overheadBfScale).toFixed(2)})`;
+      : 'scale(var(--overhead-bf-scale, 0.44))';
 
-    // 0. 在「俯瞰視角 (圖二)」下，顯示稀疏、清楚的大致真實地名（白邊黑字，如：雙連、中山、板橋、新埔等）
+    // 0. 俯瞰視角稀疏地名
     if (!isSurround && placeLabels.length > 0) {
       placeLabels.forEach((p) => {
         const lblIcon = L.divIcon({
           className: 'pikmin-district-label',
           html: `<div style="
-            font-size: 15px;
-            font-weight: 900;
+            font-size: 13px;
+            font-weight: 700;
             color: #1E293B;
             white-space: nowrap;
             text-align: center;
-            text-shadow: -1.5px -1.5px 0 #FFF, 1.5px -1.5px 0 #FFF, -1.5px 1.5px 0 #FFF, 1.5px 1.5px 0 #FFF, 0 2px 4px rgba(0,0,0,0.3);
+            text-shadow: -1.5px -1.5px 0 #FFF, 1.5px -1.5px 0 #FFF, -1.5px 1.5px 0 #FFF, 1.5px 1.5px 0 #FFF, 0 1px 3px rgba(0,0,0,0.28);
             pointer-events: none;
           ">${p.name}</div>`,
-          iconSize: [80, 22],
-          iconAnchor: [40, 11]
+          iconSize: [80, 20],
+          iconAnchor: [40, 10]
         });
         L.marker([p.lat, p.lng], { icon: lblIcon, interactive: false }).addTo(group);
       });
     }
 
-    // 1. 玩家實際種下的花海軌跡（俯瞰縮到過遠時自動隱藏以免密密麻麻蓋住街道）
-    if (isSurround || overheadZoom >= 15) {
+    // 1. 精緻小花軌跡（以微縮多瓣野花 SVG 代替大顆 Emoji，貼近皮克敏路面繁花毯質感）
+    if (isSurround || showOverheadFlowers) {
       Object.values(flowers).forEach((cell) => {
         const meta = PETAL_META[cell.color];
+        const microHtml = buildMicroPlantedFlowersSvg(meta.hex, cell.count, isSurround);
         const icon = L.divIcon({
           className: 'pikmin-flower-patch',
           html: `<div style="
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: ${isSurround ? 19 : 13}px;
-            letter-spacing: -4px;
-            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.22));
             transform: ${isSurround ? 'rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.35)' : 'none'};
             pointer-events: none;
-            white-space: nowrap;
-          ">${meta.emoji}${meta.emoji}${cell.count >= 4 ? meta.emoji : ''}</div>`,
-          iconSize: [40, 28],
-          iconAnchor: [20, 14]
+          ">${microHtml}</div>`,
+          iconSize: isSurround ? [30, 22] : [18, 14],
+          iconAnchor: isSurround ? [15, 11] : [9, 7]
         });
         L.marker([cell.lat, cell.lng], { icon, interactive: false }).addTo(group);
       });
     }
 
-    // 2. 立體長莖大花與彎頸花苞（隨縮放比例自適應大小，絕不互相擠疊）
+    // 2. 修長細緻大花與彎頸花苞（依皮克敏地圖真實建築尺度縮放）
     mergedNodes.allBigFlowers.forEach((bf, idx) => {
       const isBloomed = bf.currentFlowers >= bf.requiredFlowers || bf.bloomedColor !== null || idx % 3 === 0;
       const isBud = !isBloomed && (bf.currentFlowers >= 45 || idx % 2 === 1);
@@ -1301,11 +1419,11 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         : colorChoices[idx % colorChoices.length];
 
       L.circle([bf.lat, bf.lng], {
-        radius: isSurround ? 28 : Math.round(42 * overheadBfScale),
+        radius: isSurround ? 22 : 24,
         color: '#67E8F9',
-        weight: overheadZoom <= 13 && !isSurround ? 1.2 : 2,
+        weight: 1.5,
         fillColor: '#A5F3FC',
-        fillOpacity: 0.25
+        fillOpacity: 0.22
       }).addTo(group);
 
       const svgHtml = buildTallBigFlowerSvg(isBloomed, isBud, flowerHex);
@@ -1313,19 +1431,19 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       const bfIcon = L.divIcon({
         className: 'pikmin-clean-big-flower',
         html: `<div style="
-          width: 74px;
-          height: 96px;
+          width: 56px;
+          height: 82px;
           display: flex;
           align-items: flex-end;
           justify-content: center;
           transform: ${uprightBillboardTransform};
-          transform-origin: 50% 88%;
+          transform-origin: 50% 92%;
           cursor: pointer;
         ">
           ${svgHtml}
         </div>`,
-        iconSize: [74, 96],
-        iconAnchor: [37, 88]
+        iconSize: [56, 82],
+        iconAnchor: [28, 75]
       });
 
       const marker = L.marker([bf.lat, bf.lng], { icon: bfIcon }).addTo(group);
@@ -1337,10 +1455,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       }
     });
 
-    // 3. 叢生蘑菇群：
-    // - 依真實大小（小 / 一般 / 大）呈現清晰高低與寬度比例，並隨縮放比例縮小不堆疊
-    // - 無玩家參戰時「不顯示人數與多餘紅點」
-    // - 平時「不直接顯示文字」；點擊蘑菇先彈出黑色名字泡泡框，點擊泡泡框才進入全螢幕詳情畫面！
+    // 3. 叢生蘑菇群（細緻對齊皮克敏尺度，俯瞰時隨 --overhead-mush-scale 無段縮小）
     mergedNodes.allMushrooms.forEach((m) => {
       const participantCount = m.participants.length;
       const hpPct =
@@ -1353,9 +1468,9 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       const mushSvg = buildAuthenticPikminMushroomSvg(m.element, m.sizeLabel, m.id);
 
       const dim = MUSHROOM_CARD_SVG_DIMS[m.sizeLabel] || MUSHROOM_CARD_SVG_DIMS['一般'];
-      const viewScale = isSurround ? 0.82 : overheadMushScale;
-      const boxW = Math.round(dim.w * viewScale);
-      const boxH = Math.round(dim.h * viewScale);
+      const baseScale = isSurround ? 0.56 : 0.28;
+      const boxW = Math.round(dim.w * baseScale);
+      const boxH = Math.round(dim.h * baseScale);
 
       const topBadgeHtml =
         participantCount > 0
@@ -1445,14 +1560,14 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
           align-items: flex-end;
           justify-content: center;
           overflow: visible;
-          transform: ${isSurround ? 'rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.24) scale(var(--surround-node-scale, 1))' : 'none'};
+          transform: ${isSurround ? 'rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.24) scale(var(--surround-node-scale, 1))' : 'scale(var(--overhead-mush-rel-scale, 1))'};
           transform-origin: 50% 85%;
           cursor: pointer;
         ">
           ${calloutHtml}
           ${topBadgeHtml}
           <div style="width: ${boxW}px; height: ${boxH}px; display: flex; align-items: flex-end; justify-content: center;">
-            <div style="transform: scale(${viewScale}); transform-origin: 50% 100%;">
+            <div style="transform: scale(${baseScale}); transform-origin: 50% 100%;">
               ${mushSvg}
             </div>
           </div>
@@ -1477,59 +1592,86 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         }
       });
     });
+  }, [
+    flowers,
+    mergedNodes,
+    placeLabels,
+    myLat,
+    myLng,
+    isMini,
+    isSurround,
+    showOverheadFlowers,
+    activeCalloutId
+  ]);
 
-    // 4. 玩家角色標記（移除重複的 translate(-50%) 偏移，讓玩家與隨行地瓜球 100% 精準站在畫面正中央 [myLat, myLng]！）
+  // 獨立圖層渲染玩家與地瓜球小隊（依據手機即時指南針方向與鏡頭 360° 旋轉，不重繪周圍花菇）
+  useEffect(() => {
+    const pGroup = playerGroupRef.current;
+    if (!pGroup) return;
+    pGroup.clearLayers();
+    if (isMini) return;
+
     if (isPlanting) {
       L.circle([myLat, myLng], {
-        radius: 26,
+        radius: 22,
         color: '#FFFFFF',
         fillColor: PETAL_META[activePetalColor].hex,
-        fillOpacity: 0.28,
-        weight: 2
-      }).addTo(group);
+        fillOpacity: 0.25,
+        weight: 1.8
+      }).addTo(pGroup);
     }
 
     if (isSurround) {
-      const followerOffsets = [
-        { dx: -34, dy: 12 },
-        { dx: 34, dy: 12 },
-        { dx: -22, dy: 28 },
-        { dx: 22, dy: 28 },
-        { dx: -46, dy: 24 },
-        { dx: 46, dy: 24 },
-        { dx: -12, dy: 38 },
-        { dx: 12, dy: 38 }
+      // 計算小隊跟隨向量（永遠緊跟在玩家背後半圓！）
+      const yawRad = ((quantizedRelYaw + 180) * Math.PI) / 180;
+      const bx = Math.sin(yawRad);
+      const by = -Math.cos(yawRad);
+      const rx = -by;
+      const ry = bx;
+      const showBack = quantizedRelYaw < 65 || quantizedRelYaw > 295;
+
+      const trailSlots = [
+        { behind: 16, lat: -15 },
+        { behind: 16, lat: 15 },
+        { behind: 26, lat: -8 },
+        { behind: 26, lat: 8 },
+        { behind: 23, lat: -26 },
+        { behind: 23, lat: 26 },
+        { behind: 36, lat: -16 },
+        { behind: 36, lat: 16 }
       ];
 
       const followersHtml = squad
         .slice(0, 8)
         .map((c, idx) => {
-          const pos = followerOffsets[idx % followerOffsets.length];
+          const slot = trailSlots[idx % trailSlots.length];
+          const dx = bx * slot.behind + rx * slot.lat;
+          const dy = by * slot.behind + ry * slot.lat;
           const fHex = PETAL_META[c.flowerColor].hex;
-          const deguaSvg = buildFollowingDeGuaCreatureSvg(c.variety, c.leafStage, fHex);
+          const deguaSvg = buildFollowingDeGuaCreatureSvg(c.variety, c.leafStage, fHex, showBack);
           return `<div
             class="degua-bounce"
             style="
               position: absolute;
-              left: calc(50% + ${pos.dx}px);
-              top: calc(50% + ${pos.dy}px);
+              left: calc(50% + ${dx.toFixed(1)}px);
+              top: calc(50% + ${dy.toFixed(1)}px);
               transform: translate(-50%, -85%);
               animation-delay: ${(idx * 0.16).toFixed(2)}s;
               pointer-events: none;
-              z-index: ${pos.dy > 18 ? 30 : 10};
+              z-index: ${dy > 0 ? 30 : 12};
             "
           >${deguaSvg}</div>`;
         })
         .join('');
 
-      const walkerSvg = buildFullBodyWalkingPlayerSvg();
+      const walkerSvg = buildDirectionalWalkingPlayerSvg(quantizedRelYaw, 42, 60);
 
       const surroundPlayerIcon = L.divIcon({
         className: 'pikmin-surround-player',
         html: `<div style="
           position: relative;
-          width: 140px;
-          height: 120px;
+          width: 110px;
+          height: 100px;
           transform: rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.36) scale(var(--surround-inv-scale, 1));
           transform-origin: 50% 60%;
           pointer-events: none;
@@ -1545,67 +1687,79 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
             ${walkerSvg}
           </div>
         </div>`,
-        iconSize: [140, 120],
-        iconAnchor: [70, 66]
+        iconSize: [110, 100],
+        iconAnchor: [55, 58]
       });
 
-      L.marker([myLat, myLng], { icon: surroundPlayerIcon, interactive: false }).addTo(group);
+      L.marker([myLat, myLng], { icon: surroundPlayerIcon, interactive: false, zIndexOffset: 900 }).addTo(pGroup);
     } else {
       const overheadPlayerIcon = L.divIcon({
         className: 'pikmin-overhead-player',
         html: `<div style="
           position: relative;
-          width: 48px;
-          height: 48px;
+          width: 36px;
+          height: 36px;
           display: flex;
           align-items: center;
           justify-content: center;
           pointer-events: none;
         ">
           <div style="
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #FFFFFF;
-            border: 3px solid #E2E8F0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.28);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-          ">🧑🏻</div>
-          <div style="
             position: absolute;
-            bottom: -4px;
-            right: -2px;
-            width: 0;
-            height: 0;
-            border-left: 7px solid transparent;
-            border-right: 7px solid transparent;
-            border-top: 12px solid #FFFFFF;
-            transform: rotate(-35deg);
-            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.25));
-          "></div>
+            inset: 0;
+            transform: rotate(${quantizedHeading}deg);
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+          ">
+            <div style="
+              width: 0;
+              height: 0;
+              margin-top: -4px;
+              border-left: 6px solid transparent;
+              border-right: 6px solid transparent;
+              border-bottom: 10px solid #FFFFFF;
+              filter: drop-shadow(0 1px 2px rgba(0,0,0,0.28));
+            "></div>
+          </div>
+          <div style="
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #DBEAFE;
+            border: 2.5px solid #FFFFFF;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+            overflow: hidden;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+          ">
+            <svg width="26" height="26" viewBox="0 0 48 48">
+              <path d="M9 48 C10 34 38 34 39 48 Z" fill="#38BDF8" />
+              <circle cx="24" cy="21" r="13.5" fill="#FDE68A" />
+              <path d="M 10.5 20 C 10.5 7 37.5 7 37.5 20 C 34 13.5 29 12.5 24 13.5 C 18.5 12.5 14 14 10.5 20 Z" fill="#27272A" />
+              <circle cx="19" cy="21.5" r="2" fill="#1E293B" />
+              <circle cx="29" cy="21.5" r="2" fill="#1E293B" />
+              <path d="M 20.5 27 Q 24 29.8 27.5 27" stroke="#9A3412" stroke-width="1.8" stroke-linecap="round" fill="none" />
+            </svg>
+          </div>
         </div>`,
-        iconSize: [48, 48],
-        iconAnchor: [24, 24]
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
       });
 
-      L.marker([myLat, myLng], { icon: overheadPlayerIcon, interactive: false }).addTo(group);
+      L.marker([myLat, myLng], { icon: overheadPlayerIcon, interactive: false, zIndexOffset: 900 }).addTo(pGroup);
     }
   }, [
-    flowers,
-    mergedNodes,
-    placeLabels,
-    squad,
     myLat,
     myLng,
+    isMini,
+    isSurround,
     isPlanting,
     activePetalColor,
-    isMini,
-    cameraPerspective,
-    overheadZoom,
-    activeCalloutId
+    squad,
+    quantizedRelYaw,
+    quantizedHeading
   ]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -1640,27 +1794,32 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     }, 60);
   };
 
-  // 使用 2400×2400 超大對稱正方形畫布（中心精準對齊 50%, 50%，半徑 1200px），
-  // 無論鏡頭 0°~360° 旋轉或滾輪拉近拉遠，四周與角落邊緣街廓 100% 滿版顯示，徹底杜絕綠邊截斷與玩家歪掉！
+  // 使用 2800×2800 對稱正方形畫布並將玩家錨點定於畫面中間偏下方 (50%, 67%)，
+  // 留出上方開闊天際透視遠景，同時支援 0°~360° 旋轉及兩指無段縮放不截斷！
   const surroundBaseZoom = Math.round(surroundZoom);
   const surroundFracScale = Math.pow(2, surroundZoom - surroundBaseZoom);
-  const surroundTiltDeg = Math.max(24, Math.min(35, 32 - (surroundZoom - 17) * 2.5));
+  const surroundTiltDeg = Math.max(20, Math.min(35, 32 - (surroundZoom - 17) * 4.5));
   const surroundTotalScale = 1.18 * surroundFracScale;
   const surroundInvScale = 1 / surroundFracScale;
   const surroundNodeScale =
-    Math.max(0.42, Math.min(1.12, 0.82 * Math.pow(2, (surroundZoom - 17) * 0.6) / surroundFracScale)) /
-    0.82;
+    Math.max(0.45, Math.min(1.15, 0.85 * Math.pow(2, (surroundZoom - 17) * 0.55) / surroundFracScale)) /
+    0.85;
+  const overheadBfScale = Math.max(0.22, Math.min(0.68, 0.42 * Math.pow(0.74, 15.0 - overheadZoom)));
+  const overheadMushRelScale = Math.max(0.55, Math.min(1.6, Math.pow(0.76, 15.0 - overheadZoom)));
 
   const mapTransformStyle: React.CSSProperties = isSurround
     ? {
         position: 'absolute',
-        width: '2400px',
-        height: '2400px',
-        left: 'calc(50% - 1200px)',
-        top: 'calc(50% - 1200px)',
+        width: '2800px',
+        height: '2800px',
+        left: 'calc(50% - 1400px)',
+        top: 'calc(67% - 1400px)',
         transform: `perspective(900px) rotateX(${surroundTiltDeg.toFixed(1)}deg) rotateZ(${activeBearing.toFixed(1)}deg) scale(${surroundTotalScale.toFixed(3)})`,
         transformOrigin: '50% 50%',
-        transition: isDraggingOrbit ? 'none' : 'transform 0.16s cubic-bezier(0.22, 1, 0.36, 1)'
+        transition:
+          isDraggingOrbit || isPinching
+            ? 'none'
+            : 'transform 0.16s cubic-bezier(0.22, 1, 0.36, 1)'
       }
     : {
         position: 'absolute',
@@ -1686,13 +1845,15 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
           height: '100%',
           position: 'relative',
           overflow: 'hidden',
-          background: isMini ? '#F5F6F1' : '#60B354',
+          background: isMini ? '#F5F6F1' : '#62B656',
           cursor: isSurround ? (isDraggingOrbit ? 'grabbing' : 'grab') : 'default',
           touchAction: isSurround ? 'none' : 'auto',
           '--camera-bearing': `${activeBearing.toFixed(1)}deg`,
           '--neg-camera-bearing': `${(-activeBearing).toFixed(1)}deg`,
           '--surround-inv-scale': `${surroundInvScale.toFixed(3)}`,
-          '--surround-node-scale': `${surroundNodeScale.toFixed(3)}`
+          '--surround-node-scale': `${surroundNodeScale.toFixed(3)}`,
+          '--overhead-bf-scale': `${overheadBfScale.toFixed(3)}`,
+          '--overhead-mush-rel-scale': `${overheadMushRelScale.toFixed(3)}`
         } as React.CSSProperties
       }
     >
@@ -1701,6 +1862,22 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         className={isMini ? 'pikmin-mini-footprint-map' : 'pikmin-clean-street-map'}
         style={mapTransformStyle}
       />
+      {/* 周圍 3D 模式頂端藍天遠景霧氣漸層（完全對照皮克敏圖三地平線氛圍） */}
+      {isSurround && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 0,
+            height: '18%',
+            background:
+              'linear-gradient(180deg, rgba(138, 198, 240, 0.94) 0%, rgba(164, 218, 236, 0.42) 52%, rgba(164, 218, 236, 0) 100%)',
+            pointerEvents: 'none',
+            zIndex: 420
+          }}
+        />
+      )}
     </div>
   );
 };

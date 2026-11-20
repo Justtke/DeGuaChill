@@ -13,6 +13,7 @@ declare global {
       onNativeStepDelta?: (deltaSteps: number, totalTodaySteps: number) => void;
       onNativeBackgroundFlowerPlanted?: (cell: PlantedFlowerCell, remainingPetals: number) => void;
       onNativeLocationUpdate?: (lat: number, lng: number) => void;
+      onNativeHeadingUpdate?: (headingDeg: number) => void;
     };
   }
 }

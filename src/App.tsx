@@ -571,6 +571,7 @@ export const App: React.FC = () => {
   const [isInteractiveMapOpen, setIsInteractiveMapOpen] = useState<boolean>(false);
   const [mapPerspective, setMapPerspective] = useState<'surround' | 'overhead'>('surround');
   const [mapBearing, setMapBearing] = useState<number>(0);
+  const [playerHeadingDeg, setPlayerHeadingDeg] = useState<number>(0);
   const [isLifelogModalOpen, setIsLifelogModalOpen] = useState<boolean>(false);
   const [isShopModalOpen, setIsShopModalOpen] = useState<boolean>(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
@@ -807,9 +808,29 @@ export const App: React.FC = () => {
       },
       onNativeLocationUpdate: (lat: number, lng: number) => {
         applyVerifiedLocation(lat, lng, undefined, !hasInitialFixRef.current);
+      },
+      onNativeHeadingUpdate: (headingDeg: number) => {
+        if (Number.isFinite(headingDeg)) {
+          setPlayerHeadingDeg(((headingDeg % 360) + 360) % 360);
+        }
       }
     };
   });
+
+  // 網頁備援羅盤方位監聽（若執行於一般瀏覽器且未有原生 Swift 方位回呼時使用）
+  useEffect(() => {
+    const handleOrientation = (ev: DeviceOrientationEvent) => {
+      if (isRunningInsideIosNative()) return;
+      const webkitHeading = (ev as DeviceOrientationEvent & { webkitCompassHeading?: number }).webkitCompassHeading;
+      if (typeof webkitHeading === 'number' && Number.isFinite(webkitHeading)) {
+        setPlayerHeadingDeg(((webkitHeading % 360) + 360) % 360);
+      } else if (ev.absolute && typeof ev.alpha === 'number' && Number.isFinite(ev.alpha)) {
+        setPlayerHeadingDeg((((360 - ev.alpha) % 360) + 360) % 360);
+      }
+    };
+    window.addEventListener('deviceorientation', handleOrientation);
+    return () => window.removeEventListener('deviceorientation', handleOrientation);
+  }, []);
 
   // 僅於「Safari 加入主畫面 Standalone PWA（非原生 IPA）」時加高頂部避讓模糊帶；原生 Capacitor IPA 直接貼齊安全區匹配皮克敏緊湊感
   useEffect(() => {
@@ -2844,6 +2865,7 @@ export const App: React.FC = () => {
               mode="interactive"
               cameraPerspective={mapPerspective}
               cameraBearing={mapBearing}
+              playerHeadingDeg={playerHeadingDeg}
               recenterSeq={recenterSeq}
               focusedTarget={focusedMapTarget}
               onBearingChange={setMapBearing}
@@ -2928,7 +2950,11 @@ export const App: React.FC = () => {
               }}
               title="點擊回正北方視角 (0°)"
             >
-              🧭
+              <svg width="24" height="24" viewBox="0 0 24 24">
+                <polygon points="12,3 15.2,12 12,10.5 8.8,12" fill="#EF4444" />
+                <polygon points="12,21 15.2,12 12,13.5 8.8,12" fill="#E2E8F0" />
+                <circle cx="12" cy="12" r="1.6" fill="#FFFFFF" />
+              </svg>
             </button>
 
             {/* 圖一左下側（返回鈕上方）：半透明圓弧「🔭 望遠鏡（探險與蘑菇一覽）」按鈕 */}

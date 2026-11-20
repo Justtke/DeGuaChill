@@ -52,6 +52,9 @@ import WebKit
         startHardwareStepTracking()
         syncTodayStepsFromMidnight()
         requestNativeSingleLocationIfAuthorized()
+        if CLLocationManager.headingAvailable() {
+            locationManager.startUpdatingHeading()
+        }
     }
 
     private func syncTodayStepsFromMidnight() {
@@ -91,6 +94,7 @@ import WebKit
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 10.0 // 每移動 10 公尺觸發一次種花與步數檢查
+        locationManager.headingFilter = 3.0 // 每轉動 3 度即時更新指南針方位
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.pausesLocationUpdatesAutomatically = false
         locationManager.showsBackgroundLocationIndicator = true
@@ -110,6 +114,9 @@ import WebKit
         // 啟動背景街區移動喚醒（即使未開啟種花，走動時 iOS 也會在背景喚醒本引擎檢查 CMPedometer 步數）
         if CLLocationManager.significantLocationChangeMonitoringAvailable() {
             locationManager.startMonitoringSignificantLocationChanges()
+        }
+        if CLLocationManager.headingAvailable() {
+            locationManager.startUpdatingHeading()
         }
         startHardwareStepTracking()
     }
@@ -210,7 +217,18 @@ import WebKit
         }
     }
 
-    // MARK: - CLLocationManager 鎖螢幕背景 GPS 種花與移動喚醒
+    // MARK: - CLLocationManager 鎖螢幕背景 GPS 種花、羅盤朝向與移動喚醒
+    public func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        guard newHeading.headingAccuracy >= 0 else { return }
+        let deg = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(
+                "window.DeGuaNativeCallback && window.DeGuaNativeCallback.onNativeHeadingUpdate && window.DeGuaNativeCallback.onNativeHeadingUpdate(\(deg));",
+                completionHandler: nil
+            )
+        }
+    }
+
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let latest = locations.last else { return }
 
