@@ -20,7 +20,18 @@ export interface DailyLifecycleState {
 }
 
 /**
- * 計算「皮克敏遊戲日」鍵值：以每日凌晨 04:00 為換日點。
+ * 計算「所在時區自然日 (凌晨 00:00 重置)」鍵值（用於今日步數與每日免費商店禮物）。
+ */
+export function getLocalCalendarDayKey(nowMs: number = Date.now()): string {
+  const local = new Date(nowMs);
+  const y = local.getFullYear();
+  const m = String(local.getMonth() + 1).padStart(2, '0');
+  const d = String(local.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * 計算「皮克敏遊戲日」鍵值：以每日凌晨 04:00 為換日點（葉子／花苞與每日金幣上限重置用）。
  * 例如凌晨 02:30 仍屬於前一個遊戲日，04:00 起算新的一天。
  */
 export function getGameDayKey(nowMs: number = Date.now()): string {

@@ -45,7 +45,11 @@ import {
 } from './services/realMapService';
 import { GardenWhistleView, MeadowFruitDrop } from './components/GardenWhistleView';
 import { FlowerPlantingModal, GlassPetalJarSvg } from './components/FlowerPlantingModal';
-import { WalkingPlayerAvatar } from './components/WalkingPlayerAvatar';
+import {
+  PlayerLevelHexBadge,
+  PlayerPortraitAvatar,
+  WalkingPlayerAvatar
+} from './components/WalkingPlayerAvatar';
 import { LushFlowerMeadowBackdrop } from './components/LushFlowerMeadowBackdrop';
 import {
   PlantingMapHudOverlay,
@@ -59,6 +63,7 @@ import {
   DailyLifecycleState,
   feedNectarToSquad,
   getGameDayKey,
+  getLocalCalendarDayKey,
   harvestCreatureFlower,
   reconcileCreatureLifecycle
 } from './services/pikminLifecycleService';
@@ -74,13 +79,14 @@ import {
   MushroomBattleModal
 } from './components/ExpeditionAndRaidModals';
 import {
+  ActivityEventsModal,
+  ARCameraModal,
   DailyLifelogModal,
   DecorCollectionModal,
   FriendsAndWorldModal,
   MushroomGuideModal,
   NotificationsModal,
   PostcardsModal,
-  ProfileAndMenuModal,
   SettingsModal,
   ShopModal
 } from './components/HomeFeatureModals';
@@ -276,9 +282,11 @@ const INITIAL_EXPEDITIONS: ExpeditionItem[] = [
 ];
 
 export const App: React.FC = () => {
-  // 玩家名稱、等級與共同世界設定
+  // 玩家名稱、等級與共同世界設定（預設改為痞諾丘）
   const [playerName, setPlayerName] = useState<string>(() => {
-    return localStorage.getItem('dg_player_name_v2') || '芝麻丸';
+    const stored = localStorage.getItem('dg_player_name_v2');
+    if (!stored || stored === '芝麻丸') return '痞諾丘';
+    return stored;
   });
   const [playerLevel, setPlayerLevel] = useState<number>(() => {
     return Number(localStorage.getItem('dg_player_level_v2') || '20');
@@ -293,9 +301,23 @@ export const App: React.FC = () => {
     return localStorage.getItem('dg_cloud_url_v2') || '';
   });
 
-  // 今日步數與目前 GPS 座標
+  // 今日步數（依所在時區凌晨 00:00 自動歸零重算）與目前 GPS 座標
   const [todaySteps, setTodaySteps] = useState<number>(() => {
-    return Number(localStorage.getItem('dg_steps_v2') || '3781');
+    const curLocalDay = getLocalCalendarDayKey(Date.now());
+    const storedDay = localStorage.getItem('dg_steps_day_key_v1');
+    if (storedDay && storedDay !== curLocalDay) {
+      localStorage.setItem('dg_steps_day_key_v1', curLocalDay);
+      localStorage.setItem('dg_steps_v2', '0');
+      return 0;
+    }
+    if (!storedDay) {
+      localStorage.setItem('dg_steps_day_key_v1', curLocalDay);
+    }
+    return Number(localStorage.getItem('dg_steps_v2') || '0');
+  });
+  const stepsDayKeyRef = useRef<string>(getLocalCalendarDayKey(Date.now()));
+  const [lastDailyGiftDay, setLastDailyGiftDay] = useState<string>(() => {
+    return localStorage.getItem('dg_daily_gift_day_v1') || '';
   });
   const [myLat, setMyLat] = useState<number>(() => {
     const saved = Number(localStorage.getItem('dg_user_confirmed_lat_v5'));
@@ -554,6 +576,8 @@ export const App: React.FC = () => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
   const [isPostcardsModalOpen, setIsPostcardsModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isArCameraOpen, setIsArCameraOpen] = useState<boolean>(false);
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState<boolean>(false);
   const [isGardenOpen, setIsGardenOpen] = useState<boolean>(false);
   const [isPlanterOpen, setIsPlanterOpen] = useState<boolean>(false);
   const [isExpeditionsOpen, setIsExpeditionsOpen] = useState<boolean>(false);
@@ -681,13 +705,23 @@ export const App: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [accelExpiresAt]);
 
-  // 定期與切回前景時檢查：凌晨 4:00 葉子重置、登入滿 8 小時結花苞、2 小時飽食回復、光禿禿 6 小時長葉
+  // 定期與切回前景時檢查：
+  // 1) 今日步數 & 每日禮物：依裝置所在時區「凌晨 00:00」重置
+  // 2) 地瓜球葉子重置（04:00）、登入滿 8 小時結花苞、2 小時飽食回復、光禿禿 6 小時長葉
   useEffect(() => {
     const checkTimeTransitions = () => {
+      const nowMs = Date.now();
+      const curCalDay = getLocalCalendarDayKey(nowMs);
+      if (stepsDayKeyRef.current !== curCalDay) {
+        stepsDayKeyRef.current = curCalDay;
+        localStorage.setItem('dg_steps_day_key_v1', curCalDay);
+        setTodaySteps(0);
+      }
+
       const res = reconcileCreatureLifecycle(
         creaturesRef.current,
         dailyLifecycleRef.current,
-        Date.now()
+        nowMs
       );
       const creaturesChanged = res.creatures !== creaturesRef.current;
       const dailyChanged = res.dailyState !== dailyLifecycleRef.current;
@@ -698,9 +732,6 @@ export const App: React.FC = () => {
       if (dailyChanged) {
         dailyLifecycleRef.current = res.dailyState;
         setDailyLifecycle(res.dailyState);
-      }
-      if (res.didDailyReset) {
-        setTodaySteps(0);
       }
     };
 
@@ -756,8 +787,11 @@ export const App: React.FC = () => {
   // 綁定 iOS 原生 Swift 背景計步與種花回呼
   useEffect(() => {
     window.DeGuaNativeCallback = {
-      onNativeStepDelta: (deltaSteps: number) => {
+      onNativeStepDelta: (deltaSteps: number, totalTodaySteps: number) => {
         if (deltaSteps > 0) addStepsAndCheckSeedlings(deltaSteps);
+        if (totalTodaySteps > 0) {
+          setTodaySteps((prev) => Math.max(prev, totalTodaySteps));
+        }
       },
       onNativeBackgroundFlowerPlanted: (cell: PlantedFlowerCell, remainingPetals: number) => {
         setPetalJar((prev) => ({ ...prev, [cell.color]: remainingPetals }));
@@ -1719,17 +1753,70 @@ export const App: React.FC = () => {
     }
   };
 
+  const currentCalDay = getLocalCalendarDayKey(Date.now());
+  const canClaimDailyGift = lastDailyGiftDay !== currentCalDay;
+
+  const handleClaimDailyGift = () => {
+    const todayKey = getLocalCalendarDayKey(Date.now());
+    if (lastDailyGiftDay === todayKey) {
+      showToast('✅ 今日免費禮物已經領取過囉，明天凌晨 00:00 再來領！');
+      return;
+    }
+    setLastDailyGiftDay(todayKey);
+    localStorage.setItem('dg_daily_gift_day_v1', todayKey);
+    setPetalInventory((prev) => ({
+      ...prev,
+      daisy_white: (prev.daisy_white || 0) + 15,
+      daisy_yellow: (prev.daisy_yellow || 0) + 15,
+      daisy_red: (prev.daisy_red || 0) + 15,
+      daisy_blue: (prev.daisy_blue || 0) + 15
+    }));
+    setNectarJar((prev) => ({ ...prev, yellow: prev.yellow + 10 }));
+    showToast('🎁 領取今日免費禮物成功！獲得四色雛菊花瓣各 +15 片與黃色精華 +10 滴！');
+  };
+
   const readySeedlingsCount = seedlings.filter((s) => s.isReady).length;
   const activeFryerCount = seedlings.filter((s) => s.slotIndex !== null).length;
   const squadCreatures = creatures.filter((c) => c.inSquad && c.busyState === 'free');
   const totalExpeditionItems = mushrooms.length + expeditions.length;
   const missionPct = Math.min(100, Math.round((mushroomsDestroyed / missionTarget) * 100));
 
-  const todayDateStr = useMemo(() => {
+  const { todayDateStr, weekDays } = useMemo(() => {
     const now = new Date();
     const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-    return `${now.getMonth() + 1}月${now.getDate()}日 ${weekdays[now.getDay()]}`;
-  }, []);
+    const labels = ['一', '二', '三', '四', '五', '六', '日'];
+    const todayMonIndex = (now.getDay() + 6) % 7; // 0=週一 ... 6=週日
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - todayMonIndex);
+    const days = labels.map((label, idx) => {
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + idx);
+      return {
+        label,
+        dayNum: d.getDate(),
+        isToday: idx === todayMonIndex,
+        isPastOrToday: idx <= todayMonIndex,
+        slotKey: idx + 1
+      };
+    });
+    return {
+      todayDateStr: `${now.getMonth() + 1}月${now.getDate()}日 ${weekdays[now.getDay()]}`,
+      weekDays: days
+    };
+  }, [currentCalDay]);
+
+  const glassBubbleStyle: React.CSSProperties = {
+    borderRadius: '50%',
+    border: '1.5px solid rgba(255, 255, 255, 0.52)',
+    background:
+      'radial-gradient(circle at 30% 24%, rgba(255,255,255,0.68) 0%, rgba(167,243,208,0.34) 38%, rgba(16,185,129,0.52) 76%, rgba(6,78,59,0.72) 100%)',
+    boxShadow:
+      '0 6px 16px rgba(0,0,0,0.24), inset 0 4px 10px rgba(255,255,255,0.78), inset 0 -5px 10px rgba(6,78,59,0.45)',
+    backdropFilter: 'blur(4px)',
+    WebkitBackdropFilter: 'blur(4px)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  };
 
   return (
     <div
@@ -1758,31 +1845,49 @@ export const App: React.FC = () => {
         <LushFlowerMeadowBackdrop variant="home" />
       </div>
 
-      {/* ==================== 上半部固定卡片區（避開 iOS 頂部模糊區） ==================== */}
+      {/* 圖四：按下左下 ☰ 漢堡選單後的背景毛玻璃遮罩（讓上方卡片與「痞諾丘 | 商店」保持原位不動，模糊後方草地與下方動作按鈕） */}
+      {isProfileMenuOpen && (
+        <div
+          onClick={() => setIsProfileMenuOpen(false)}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 35,
+            background: 'rgba(15, 23, 42, 0.16)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)'
+          }}
+        />
+      )}
+
+      {/* ==================== 上半部固定卡片區（1:1 對照皮克敏圖二＆圖三比例；開選單時置於 zIndex 45 保持原位！） ==================== */}
       <div
         style={{
           padding: 'var(--top-safe-hud) 14px 4px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 7,
-          zIndex: 10,
+          gap: 9,
+          zIndex: isProfileMenuOpen ? 45 : 10,
           position: 'relative'
         }}
       >
-        {/* 【頂部四顆純白膠囊】：飾品一覽 ｜ 好友 ｜ 通知 ｜ 說明 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+        {/* 【頂部三顆純白膠囊】：飾品一覽 ｜ 好友 ｜ 通知（移除說明，字體比例比照圖二！） */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <button
-            onClick={() => setIsDecorModalOpen(true)}
+            onClick={() => {
+              setIsProfileMenuOpen(false);
+              setIsDecorModalOpen(true);
+            }}
             style={{
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 99,
-              padding: '7px 4px',
+              padding: '8px 6px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 4,
-              fontSize: 11.5,
+              gap: 6,
+              fontSize: 13.5,
               fontWeight: 900,
               color: '#1E293B',
               cursor: 'pointer',
@@ -1790,22 +1895,25 @@ export const App: React.FC = () => {
               whiteSpace: 'nowrap'
             }}
           >
-            <span>🎖️</span>
-            <span>飾品</span>
+            <span style={{ fontSize: 16 }}>🎖️</span>
+            <span>飾品一覽</span>
           </button>
 
           <button
-            onClick={() => setIsFriendsModalOpen(true)}
+            onClick={() => {
+              setIsProfileMenuOpen(false);
+              setIsFriendsModalOpen(true);
+            }}
             style={{
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 99,
-              padding: '7px 4px',
+              padding: '8px 6px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 4,
-              fontSize: 11.5,
+              gap: 6,
+              fontSize: 13.5,
               fontWeight: 900,
               color: '#1E293B',
               cursor: 'pointer',
@@ -1813,22 +1921,25 @@ export const App: React.FC = () => {
               whiteSpace: 'nowrap'
             }}
           >
-            <span>➿</span>
+            <span style={{ fontSize: 16 }}>➿</span>
             <span>好友</span>
           </button>
 
           <button
-            onClick={() => setIsNotificationsModalOpen(true)}
+            onClick={() => {
+              setIsProfileMenuOpen(false);
+              setIsNotificationsModalOpen(true);
+            }}
             style={{
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 99,
-              padding: '7px 4px',
+              padding: '8px 6px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 4,
-              fontSize: 11.5,
+              gap: 6,
+              fontSize: 13.5,
               fontWeight: 900,
               color: '#1E293B',
               cursor: 'pointer',
@@ -1836,35 +1947,12 @@ export const App: React.FC = () => {
               whiteSpace: 'nowrap'
             }}
           >
-            <span>📢</span>
+            <span style={{ fontSize: 16 }}>📢</span>
             <span>通知</span>
-          </button>
-
-          <button
-            onClick={() => setIsGuideModalOpen(true)}
-            style={{
-              background: '#FFFFFF',
-              border: 'none',
-              borderRadius: 99,
-              padding: '7px 4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              fontSize: 11.5,
-              fontWeight: 900,
-              color: '#1E293B',
-              cursor: 'pointer',
-              boxShadow: '0 3px 10px rgba(0,0,0,0.12)',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            <span>📖</span>
-            <span>說明</span>
           </button>
         </div>
 
-        {/* 【主畫面中央大白卡：上半部靜態今日足跡概覽地圖＋步數 ＆ 下半部本週日曆連成一體（完全對照圖 3）】 */}
+        {/* 【主畫面中央大白卡：上半部靜態今日足跡概覽地圖＋步數 ＆ 下半部本週日曆連成一體（高度與文字比例完全對照圖二！）】 */}
         <div
           style={{
             background: '#FFFFFF',
@@ -1875,12 +1963,12 @@ export const App: React.FC = () => {
             flexDirection: 'column'
           }}
         >
-          {/* 紅框部分：只顯示今天走的區域綠色足跡與步數（不做地圖雜亂互動，上方只有「你有 X 項探險！ >」按鈕） */}
+          {/* 紅框地圖區（加高至 212px，還原皮克敏上方高挑地圖比例） */}
           <div
             style={{
               position: 'relative',
               width: '100%',
-              height: 175,
+              height: 212,
               borderRadius: 18,
               overflow: 'hidden'
             }}
@@ -1900,9 +1988,12 @@ export const App: React.FC = () => {
               activeExpeditions={[]}
             />
 
-            {/* 地圖上唯一的按鈕：🍄 你有 X 項探險！ > （點進去有可打的菇跟可搬的瓜糰） */}
+            {/* 地圖上唯一的按鈕：你有 X 項探險！ > */}
             <button
-              onClick={() => setIsExpeditionsOpen(true)}
+              onClick={() => {
+                setIsProfileMenuOpen(false);
+                setIsExpeditionsOpen(true);
+              }}
               style={{
                 position: 'absolute',
                 top: 12,
@@ -1916,11 +2007,11 @@ export const App: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                fontSize: 13,
+                fontSize: 13.5,
                 fontWeight: 900,
                 color: '#1E293B',
                 cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.14)',
                 whiteSpace: 'nowrap'
               }}
             >
@@ -1929,38 +2020,63 @@ export const App: React.FC = () => {
               <span style={{ color: '#94A3B8' }}>&gt;</span>
             </button>
 
-            {/* 地圖正下方中央：皇冠 + 翠綠白邊大字步數（完全對照圖 3 的 3781 步數） */}
+            {/* 地圖正下方中央：對照圖二「深炭黑粗字白外框步數 + 左側小花點綴」 */}
             <div
               style={{
                 position: 'absolute',
-                bottom: 6,
+                bottom: 8,
                 left: '50%',
                 transform: 'translateX(-50%)',
                 zIndex: 405,
-                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
                 pointerEvents: 'none'
               }}
             >
-              <div style={{ fontSize: 14, marginBottom: -4 }}>👑</div>
-              <div
-                style={{
-                  fontSize: 38,
-                  fontWeight: 900,
-                  color: '#10B981',
-                  lineHeight: 1,
-                  letterSpacing: 1,
-                  WebkitTextStroke: '1.5px #FFFFFF',
-                  textShadow: '0 2px 6px rgba(0,0,0,0.22), 0 0 10px #FFFFFF'
-                }}
-              >
-                {todaySteps}
+              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'flex-end' }}>
+                {/* 左側可愛立體花朵綴飾（對照圖二數字左下藍花） */}
+                <svg
+                  width="34"
+                  height="34"
+                  viewBox="0 0 34 34"
+                  style={{
+                    marginRight: -6,
+                    marginBottom: 2,
+                    filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.22))',
+                    zIndex: 2
+                  }}
+                >
+                  <circle cx="17" cy="8" r="5.5" fill="#93C5FD" stroke="#FFFFFF" strokeWidth="1.5" />
+                  <circle cx="25" cy="14" r="5.5" fill="#93C5FD" stroke="#FFFFFF" strokeWidth="1.5" />
+                  <circle cx="22" cy="23" r="5.5" fill="#93C5FD" stroke="#FFFFFF" strokeWidth="1.5" />
+                  <circle cx="12" cy="23" r="5.5" fill="#93C5FD" stroke="#FFFFFF" strokeWidth="1.5" />
+                  <circle cx="9" cy="14" r="5.5" fill="#93C5FD" stroke="#FFFFFF" strokeWidth="1.5" />
+                  <circle cx="17" cy="16.5" r="3.8" fill="#FDE047" />
+                </svg>
+                <div
+                  style={{
+                    fontSize: 44,
+                    fontWeight: 900,
+                    color: '#1F2937',
+                    lineHeight: 0.94,
+                    letterSpacing: 0.5,
+                    WebkitTextStroke: '5px #FFFFFF',
+                    paintOrder: 'stroke fill',
+                    textShadow: '0 3px 8px rgba(0,0,0,0.24)'
+                  }}
+                >
+                  {todaySteps}
+                </div>
               </div>
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 13.5,
                   fontWeight: 900,
-                  color: '#0F172A',
-                  textShadow: '0 0 6px #FFFFFF, 0 0 10px #FFFFFF'
+                  color: '#1F2937',
+                  marginTop: 2,
+                  WebkitTextStroke: '2.5px #FFFFFF',
+                  paintOrder: 'stroke fill'
                 }}
               >
                 步數
@@ -1968,37 +2084,38 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* 同一張大白卡下半部：每日紀錄日曆（點擊開啟 Lifelog） */}
+          {/* 同一張大白卡下半部：每日紀錄日曆（依所在時區動態算出本週一～日！） */}
           <div
-            onClick={() => setIsLifelogModalOpen(true)}
+            onClick={() => {
+              setIsProfileMenuOpen(false);
+              setIsLifelogModalOpen(true);
+            }}
             style={{
-              padding: '10px 8px 6px',
+              padding: '12px 8px 8px',
               cursor: 'pointer'
             }}
           >
-            <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 900, color: '#334155', marginBottom: 8 }}>
+            <div style={{ textAlign: 'center', fontSize: 16, fontWeight: 900, color: '#334155', marginBottom: 10 }}>
               {todayDateStr}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, textAlign: 'center' }}>
-              {['一', '二', '三', '四', '五', '六', '日'].map((dayLabel, idx) => {
-                const dayNum = idx + 11;
-                const mood = dailyMoods[idx + 1];
-                const isToday = idx === 0;
+              {weekDays.map((wd) => {
+                const mood = wd.isPastOrToday && !wd.isToday ? dailyMoods[wd.slotKey] : undefined;
                 return (
-                  <div key={dayLabel} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: '#64748B' }}>{dayLabel}</span>
+                  <div key={wd.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 800, color: '#64748B' }}>{wd.label}</span>
                     {mood ? (
                       <div
                         style={{
-                          width: 30,
-                          height: 30,
+                          width: 34,
+                          height: 34,
                           borderRadius: '50%',
                           background: '#FEF08A',
                           border: '1.5px solid #F59E0B',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: 16
+                          fontSize: 17
                         }}
                       >
                         {mood}
@@ -2006,19 +2123,19 @@ export const App: React.FC = () => {
                     ) : (
                       <div
                         style={{
-                          width: 30,
-                          height: 30,
+                          width: 34,
+                          height: 34,
                           borderRadius: '50%',
-                          border: isToday ? '2px solid #10B981' : '1px solid transparent',
+                          border: wd.isToday ? '2px solid #22C55E' : '1px solid transparent',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: 14,
+                          fontSize: 15,
                           fontWeight: 900,
-                          color: isToday ? '#10B981' : '#93C5FD'
+                          color: wd.isToday ? '#16A34A' : '#93C5FD'
                         }}
                       >
-                        {dayNum}
+                        {wd.dayNum}
                       </div>
                     )}
                   </div>
@@ -2028,13 +2145,17 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* 【進行中的任務卡片】 */}
+        {/* 【進行中的任務卡片（比例對照圖二）】 */}
         <div
-          onClick={handleClaimMissionReward}
+          onClick={() => {
+            setIsProfileMenuOpen(false);
+            handleClaimMissionReward();
+          }}
           style={{
             background: '#FFFFFF',
             borderRadius: 18,
-            padding: '10px 14px',
+            padding: '12px 16px',
+            minHeight: 72,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -2044,13 +2165,10 @@ export const App: React.FC = () => {
           }}
         >
           <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 900, color: '#0F172A', marginBottom: 6 }}>
-              <span>摧毀 {missionTarget} 朵蘑菇</span>
-              <span style={{ color: '#10B981', fontSize: 12 }}>
-                {mushroomsDestroyed >= missionTarget ? '✨ 點此領取獎勵瓜糰！' : `${mushroomsDestroyed} / ${missionTarget}`}
-              </span>
+            <div style={{ fontSize: 14.5, fontWeight: 900, color: '#1E293B', marginBottom: 8 }}>
+              摧毀 {missionTarget} 朵蘑菇
             </div>
-            <div style={{ width: '100%', height: 8, background: '#E2E8F0', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ width: '100%', height: 7, background: '#E2E8F0', borderRadius: 99, overflow: 'hidden' }}>
               <div
                 style={{
                   width: `${missionPct}%`,
@@ -2059,6 +2177,11 @@ export const App: React.FC = () => {
                   transition: 'width 0.3s ease'
                 }}
               />
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: mushroomsDestroyed >= missionTarget ? '#16A34A' : '#64748B', marginTop: 6 }}>
+              {mushroomsDestroyed >= missionTarget
+                ? '✨ 點此領取任務獎勵！'
+                : `+還差 ${Math.max(1, missionTarget - mushroomsDestroyed)} 朵蘑菇 (${mushroomsDestroyed}/${missionTarget})`}
             </div>
           </div>
 
@@ -2070,64 +2193,167 @@ export const App: React.FC = () => {
               flowerColor="white"
               showDecor={true}
               isBouncing={false}
-              size={38}
+              size={44}
             />
           </div>
         </div>
 
-        {/* 【個人資訊 ＆ 商店 並排雙純白圓角卡】 */}
+        {/* 【個人資訊 (2吋照＋六角分色Lv徽章＋痞諾丘) ＆ 商店 (未領免費禮斜角綠袋 / 已領純白底)】 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <button
-            onClick={() => setIsProfileMenuOpen(true)}
+            onClick={() => {
+              if (isProfileMenuOpen) {
+                setIsProfileMenuOpen(false);
+                setIsSettingsModalOpen(true);
+              } else {
+                setIsProfileMenuOpen(true);
+              }
+            }}
             style={{
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 16,
-              padding: '9px 12px',
+              padding: '7px 12px',
+              height: 54,
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
+              gap: 6,
               cursor: 'pointer',
               boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
             }}
           >
-            <WalkingPlayerAvatar height={26} isWalking={false} />
+            <PlayerPortraitAvatar size={38} />
+            <div style={{ marginLeft: -12, marginTop: 8, zIndex: 2 }}>
+              <PlayerLevelHexBadge level={playerLevel} />
+            </div>
             <span
               style={{
-                background: 'linear-gradient(135deg, #F59E0B, #B45309)',
-                color: '#FFF',
-                fontSize: 11,
+                fontSize: 15.5,
                 fontWeight: 900,
-                padding: '2px 6px',
-                borderRadius: 99
+                color: '#1E293B',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                marginLeft: 2
               }}
             >
-              {playerLevel}
-            </span>
-            <span style={{ fontSize: 14, fontWeight: 900, color: '#1E293B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {playerName}
             </span>
           </button>
 
           <button
-            onClick={() => setIsShopModalOpen(true)}
+            onClick={() => {
+              setIsProfileMenuOpen(false);
+              setIsShopModalOpen(true);
+            }}
             style={{
+              position: 'relative',
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 16,
-              padding: '9px 12px',
+              padding: '7px 14px',
+              height: 54,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: canClaimDailyGift ? 'flex-start' : 'center',
               gap: 8,
               cursor: 'pointer',
+              overflow: 'hidden',
               boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
             }}
+            title={canClaimDailyGift ? '點此領取今日免費禮物！' : '商店'}
           >
-            <span style={{ fontSize: 18 }}>🛍️</span>
-            <span style={{ fontSize: 14, fontWeight: 900, color: '#1E293B' }}>商店</span>
+            <span style={{ fontSize: 18, zIndex: 2 }}>🛍️</span>
+            <span style={{ fontSize: 15.5, fontWeight: 900, color: '#1E293B', zIndex: 2 }}>
+              商店
+            </span>
+
+            {/* 每日免費禮物未領取時顯示皮克敏圖二同款「薄荷綠禮物袋＋黃色絲帶閃耀樣式」 */}
+            {canClaimDailyGift && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: -4,
+                  top: -4,
+                  bottom: -4,
+                  width: '54%',
+                  pointerEvents: 'none',
+                  overflow: 'hidden'
+                }}
+              >
+                <svg viewBox="0 0 110 64" width="100%" height="100%" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="dailyGiftBagGrad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#D1FAE5" />
+                      <stop offset="100%" stopColor="#86EFAC" />
+                    </linearGradient>
+                  </defs>
+                  {/* 禮物袋主體與折角 */}
+                  <polygon points="24,0 110,0 110,64 6,64" fill="url(#dailyGiftBagGrad)" />
+                  {/* 黃色絲帶與蝴蝶結 */}
+                  <line x1="60" y1="0" x2="36" y2="64" stroke="#FDE047" strokeWidth="7" />
+                  <line x1="12" y1="22" x2="110" y2="52" stroke="#FEF08A" strokeWidth="5.5" />
+                  <circle cx="52" cy="17" r="7" fill="#FEF08A" stroke="#F59E0B" strokeWidth="1.2" />
+                  <circle cx="65" cy="21" r="6.5" fill="#FDE047" stroke="#F59E0B" strokeWidth="1.2" />
+                  {/* 閃亮小星星 */}
+                  <path d="M88 12 L90 17 L95 19 L90 21 L88 26 L86 21 L81 19 L86 17 Z" fill="#FFFFFF" />
+                  <circle cx="28" cy="48" r="2.2" fill="#FEF9C3" />
+                </svg>
+              </div>
+            )}
           </button>
         </div>
+
+        {/* 圖四：按了左下角漢堡選單後，直接在上方卡片正下方滑出 7 顆純白雙欄按鈕（保留上方卡＋痞諾丘＋商店原位！） */}
+        {isProfileMenuOpen && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 10,
+              marginTop: 2
+            }}
+          >
+            {[
+              { key: 'garden', label: '地瓜球', icon: '🍠' },
+              { key: 'planter', label: '瓜糰', icon: '🍯' },
+              { key: 'postcards', label: '明信片', icon: '🖼️' },
+              { key: 'ar', label: 'AR相機', icon: '📷' },
+              { key: 'activity', label: '參加活動', icon: '🏃' },
+              { key: 'guide', label: '遊玩指南', icon: '📖' },
+              { key: 'settings', label: '設定', icon: '⚙️' }
+            ].map((btn) => (
+              <button
+                key={btn.key}
+                onClick={() => {
+                  setIsProfileMenuOpen(false);
+                  if (btn.key === 'garden') setIsGardenOpen(true);
+                  if (btn.key === 'planter') setIsPlanterOpen(true);
+                  if (btn.key === 'postcards') setIsPostcardsModalOpen(true);
+                  if (btn.key === 'ar') setIsArCameraOpen(true);
+                  if (btn.key === 'activity') setIsActivityModalOpen(true);
+                  if (btn.key === 'guide') setIsGuideModalOpen(true);
+                  if (btn.key === 'settings') setIsSettingsModalOpen(true);
+                }}
+                style={{
+                  background: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 16,
+                  padding: '0 14px',
+                  height: 52,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.12)'
+                }}
+              >
+                <span style={{ fontSize: 21 }}>{btn.icon}</span>
+                <span style={{ fontSize: 15, fontWeight: 900, color: '#1E293B' }}>{btn.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ==================== 下半部花海草地角色散步場景 ＋ 底部按鈕群（完全對照皮克敏主畫面） ==================== */}
@@ -2243,34 +2469,27 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* 左下角：☰ 主選單圓鈕 */}
+        {/* 左下角：☰ 主選單圓鈕（選單展開時自動變成 ✕ 關閉鈕，對照皮克敏圖二與圖四立體透明泡泡光澤！） */}
         <button
-          onClick={() => setIsProfileMenuOpen(true)}
+          onClick={() => setIsProfileMenuOpen((v) => !v)}
           style={{
+            ...glassBubbleStyle,
             position: 'absolute',
             left: 16,
             bottom: 'max(16px, env(safe-area-inset-bottom))',
-            zIndex: 20,
+            zIndex: 50,
             width: 54,
             height: 54,
-            borderRadius: '50%',
-            border: '2.5px solid rgba(255,255,255,0.85)',
-            background: 'radial-gradient(circle at 30% 30%, rgba(52,211,153,0.9), rgba(5,150,105,0.92))',
             color: '#FFFFFF',
-            fontSize: 22,
-            fontWeight: 900,
-            cursor: 'pointer',
-            boxShadow: '0 6px 16px rgba(0,0,0,0.28), inset 0 2px 6px rgba(255,255,255,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            fontSize: 21,
+            fontWeight: 900
           }}
-          title="主選單"
+          title={isProfileMenuOpen ? '關閉選單' : '主選單'}
         >
-          ☰
+          {isProfileMenuOpen ? '✕' : '☰'}
         </button>
 
-        {/* 【正下方中央：🧭 地圖按鈕（完全對照圖 3 正下方中央的指北針圓鈕！點進去是圖 2 的周圍/俯瞰地圖）】 */}
+        {/* 【正下方中央：🧭 地圖按鈕（立體透明泡泡光澤）】 */}
         <button
           onClick={() => {
             requestAndApplyRealLocation(false);
@@ -2280,6 +2499,7 @@ export const App: React.FC = () => {
             setIsInteractiveMapOpen(true);
           }}
           style={{
+            ...glassBubbleStyle,
             position: 'absolute',
             left: '50%',
             transform: 'translateX(-50%)',
@@ -2287,23 +2507,19 @@ export const App: React.FC = () => {
             zIndex: 20,
             width: 58,
             height: 58,
-            borderRadius: '50%',
-            border: '3px solid rgba(255,255,255,0.9)',
-            background: 'radial-gradient(circle at 30% 30%, rgba(52,211,153,0.95), rgba(4,120,87,0.95))',
-            color: '#FFFFFF',
-            fontSize: 26,
-            cursor: 'pointer',
-            boxShadow: '0 6px 18px rgba(0,0,0,0.32), inset 0 3px 8px rgba(255,255,255,0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            color: '#FFFFFF'
           }}
           title="開啟散步地圖"
         >
-          🧭
+          <svg width="26" height="26" viewBox="0 0 28 28">
+            <circle cx="14" cy="14" r="11" fill="none" stroke="#FFFFFF" strokeWidth="2" />
+            <polygon points="14,5 17.5,14 14,12.5 10.5,14" fill="#FFFFFF" />
+            <polygon points="14,23 17.5,14 14,15.5 10.5,14" fill="rgba(255,255,255,0.45)" />
+            <circle cx="14" cy="14" r="2" fill="#FFFFFF" />
+          </svg>
         </button>
 
-        {/* 右下角垂直三顆玻璃球圓鈕：🌼 花朵 ｜ 🍳 油鍋 ｜ 😗 口哨 */}
+        {/* 右下角垂直三顆玻璃泡泡圓鈕：花朵 ｜ 油鍋 ｜ 口哨 */}
         <div
           style={{
             position: 'absolute',
@@ -2316,27 +2532,14 @@ export const App: React.FC = () => {
             gap: 10
           }}
         >
-          {/* 🌼 花朵（開啟種花模式／種花中顯示目前玻璃瓶與剩餘片數） */}
+          {/* 花朵（開啟種花模式／種花中顯示目前玻璃瓶） */}
           <button
             onClick={() => setShowPlantingDrawer(true)}
             style={{
+              ...glassBubbleStyle,
               width: 54,
               height: 54,
-              borderRadius: '50%',
-              border: isPlanting
-                ? '2.5px solid #4ADE80'
-                : '2.5px solid rgba(255,255,255,0.88)',
-              background: isPlanting
-                ? 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(187,247,208,0.95))'
-                : 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.85), rgba(16,185,129,0.9))',
-              fontSize: 25,
-              cursor: 'pointer',
-              boxShadow: isPlanting
-                ? '0 0 18px rgba(74,222,128,0.72), 0 6px 16px rgba(0,0,0,0.26)'
-                : '0 6px 16px rgba(0,0,0,0.26), inset 0 3px 8px rgba(255,255,255,0.7)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              border: isPlanting ? '2px solid #4ADE80' : glassBubbleStyle.border,
               position: 'relative'
             }}
             title="花朵：開啟種花模式"
@@ -2368,30 +2571,43 @@ export const App: React.FC = () => {
                 </span>
               </>
             ) : (
-              '🌼'
+              <svg width="32" height="32" viewBox="0 0 36 36">
+                <g transform="translate(13, 14)">
+                  <circle cx="0" cy="-6" r="4" fill="#FFFFFF" />
+                  <circle cx="5.5" cy="-2" r="4" fill="#FFFFFF" />
+                  <circle cx="3.5" cy="5" r="4" fill="#FFFFFF" />
+                  <circle cx="-3.5" cy="5" r="4" fill="#FFFFFF" />
+                  <circle cx="-5.5" cy="-2" r="4" fill="#FFFFFF" />
+                  <circle cx="0" cy="0" r="2.8" fill="#FACC15" />
+                </g>
+                <g transform="translate(24, 23) scale(0.75)">
+                  <circle cx="0" cy="-6" r="4" fill="#FFFFFF" />
+                  <circle cx="5.5" cy="-2" r="4" fill="#FFFFFF" />
+                  <circle cx="3.5" cy="5" r="4" fill="#FFFFFF" />
+                  <circle cx="-3.5" cy="5" r="4" fill="#FFFFFF" />
+                  <circle cx="-5.5" cy="-2" r="4" fill="#FFFFFF" />
+                  <circle cx="0" cy="0" r="2.8" fill="#FACC15" />
+                </g>
+              </svg>
             )}
           </button>
 
-          {/* 🍳 油鍋（查看與油炸瓜糰，炸好從鍋裡撈起） */}
+          {/* 油鍋（查看與油炸瓜糰，炸好起鍋） */}
           <button
             onClick={() => setIsPlanterOpen(true)}
             style={{
+              ...glassBubbleStyle,
               width: 54,
               height: 54,
-              borderRadius: '50%',
-              border: '2.5px solid rgba(255,255,255,0.88)',
-              background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.85), rgba(16,185,129,0.9))',
-              fontSize: 24,
-              cursor: 'pointer',
-              boxShadow: '0 6px 16px rgba(0,0,0,0.26), inset 0 3px 8px rgba(255,255,255,0.7)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               position: 'relative'
             }}
-            title="油鍋：炸瓜糰與從鍋裡撈起地瓜球"
+            title="油鍋：炸瓜糰與起鍋地瓜球"
           >
-            🍳
+            <svg width="32" height="30" viewBox="0 0 36 32" fill="none">
+              <ellipse cx="18" cy="23" rx="13" ry="5" fill="#14B8A6" stroke="#FFFFFF" strokeWidth="1.4" />
+              <ellipse cx="18" cy="18.5" rx="9" ry="5.5" fill="#92400E" stroke="#FDE68A" strokeWidth="1.3" />
+              <circle cx="18" cy="15.5" r="4.5" fill="#FBBF24" stroke="#B45309" strokeWidth="1.2" />
+            </svg>
             {readySeedlingsCount > 0 && (
               <span
                 style={{
@@ -2412,25 +2628,28 @@ export const App: React.FC = () => {
             )}
           </button>
 
-          {/* 😗 口哨（快速集合並餵食精華花蜜） */}
+          {/* 口哨（快速集合並餵食精華花蜜） */}
           <button
             onClick={() => setIsGardenOpen(true)}
             style={{
-              width: 60,
-              height: 60,
-              borderRadius: '50%',
-              border: '3px solid rgba(255,255,255,0.92)',
-              background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.9), rgba(5,150,105,0.95))',
-              fontSize: 27,
-              cursor: 'pointer',
-              boxShadow: '0 8px 20px rgba(0,0,0,0.3), inset 0 3px 8px rgba(255,255,255,0.7)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
+              ...glassBubbleStyle,
+              width: 62,
+              height: 62
             }}
             title="口哨：集合並餵食地瓜球"
           >
-            😗
+            <svg width="34" height="28" viewBox="0 0 42 32" fill="none">
+              <path
+                d="M8 10H26C31.5 10 35 13.8 35 19C35 24.5 30.8 28 25.5 28C21 28 17.5 25.2 16.5 21H7.5C6.1 21 5 19.9 5 18.5V13C5 11.3 6.3 10 8 10Z"
+                fill="#F8FAFC"
+                stroke="#334155"
+                strokeWidth="2"
+                strokeLinejoin="round"
+              />
+              <circle cx="25.5" cy="19" r="4.5" fill="#94A3B8" stroke="#334155" strokeWidth="1.5" />
+              <path d="M35 15.5C37.5 15.5 39 17.2 39 19.5C39 21.8 37.5 23.5 35 23.5" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" />
+              <rect x="8" y="13" width="6" height="3" rx="1.5" fill="#38BDF8" />
+            </svg>
           </button>
         </div>
       </div>
@@ -3083,32 +3302,33 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* ☰ 左下主選單（對照皮克敏圖五簡潔毛玻璃雙欄選單） */}
-      {isProfileMenuOpen && (
-        <ProfileAndMenuModal
-          playerName={playerName}
-          level={playerLevel}
-          onOpenSubModal={(target) => {
-            setIsProfileMenuOpen(false);
-            if (target === 'garden') setIsGardenOpen(true);
-            if (target === 'planter') setIsPlanterOpen(true);
-            if (target === 'expeditions') setIsExpeditionsOpen(true);
-            if (target === 'friends') setIsFriendsModalOpen(true);
-            if (target === 'shop') setIsShopModalOpen(true);
-            if (target === 'guide') setIsGuideModalOpen(true);
-            if (target === 'postcards') setIsPostcardsModalOpen(true);
-            if (target === 'lifelog') setIsLifelogModalOpen(true);
-            if (target === 'settings') setIsSettingsModalOpen(true);
-          }}
-          onClose={() => setIsProfileMenuOpen(false)}
-        />
-      )}
-
       {/* 🖼️ 明信片子頁面 */}
       {isPostcardsModalOpen && (
         <PostcardsModal
           postcards={postcards}
           onClose={() => setIsPostcardsModalOpen(false)}
+        />
+      )}
+
+      {/* 📷 AR 相機子頁面 */}
+      {isArCameraOpen && (
+        <ARCameraModal
+          squadCreatures={squadCreatures}
+          onClose={() => setIsArCameraOpen(false)}
+        />
+      )}
+
+      {/* 🏃 參加活動子頁面 */}
+      {isActivityModalOpen && (
+        <ActivityEventsModal
+          todaySteps={todaySteps}
+          mushroomsDestroyed={mushroomsDestroyed}
+          missionTarget={missionTarget}
+          onClaimMission={() => {
+            setIsActivityModalOpen(false);
+            handleClaimMissionReward();
+          }}
+          onClose={() => setIsActivityModalOpen(false)}
         />
       )}
 
@@ -3132,6 +3352,8 @@ export const App: React.FC = () => {
       {isShopModalOpen && (
         <ShopModal
           coins={coins}
+          canClaimDailyGift={canClaimDailyGift}
+          onClaimDailyGift={handleClaimDailyGift}
           onBuyItem={handleBuyShopItem}
           onClose={() => setIsShopModalOpen(false)}
         />

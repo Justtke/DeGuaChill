@@ -559,15 +559,17 @@ export const DailyLifelogModal: React.FC<{
   );
 };
 
-/* ==================== 5. 🛍️ 商店 (Shop Modal) ==================== */
+/* ==================== 5. 🛍️ 商店 (Shop Modal + 每日免費禮物) ==================== */
 export const ShopModal: React.FC<{
   coins: number;
+  canClaimDailyGift: boolean;
+  onClaimDailyGift: () => void;
   onBuyItem: (
     cost: number,
     rewardType: 'petals' | 'nectar' | 'radar' | 'seedling' | 'extra_slot_std' | 'extra_slot_fast25'
   ) => void;
   onClose: () => void;
-}> = ({ coins, onBuyItem, onClose }) => {
+}> = ({ coins, canClaimDailyGift, onClaimDailyGift, onBuyItem, onClose }) => {
   const shopItems = [
     {
       id: 'petals',
@@ -650,6 +652,70 @@ export const ShopModal: React.FC<{
           subtitle={`目前持有金幣：💰 ${coins} 枚（散步種花可自動獲得金幣）`}
           onClose={onClose}
         />
+
+        {/* 每日免費禮物區塊（每天凌晨 0:00 重置；領取後主畫面商店恢復純白卡片） */}
+        <div
+          style={{
+            background: canClaimDailyGift
+              ? 'linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 52%, #FEF08A 100%)'
+              : '#F1F5F9',
+            border: canClaimDailyGift ? '2px solid #10B981' : '1.5px solid #E2E8F0',
+            borderRadius: 22,
+            padding: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 16,
+                background: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 28,
+                boxShadow: '0 3px 8px rgba(0,0,0,0.08)'
+              }}
+            >
+              🎁
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: '#065F46' }}>
+                每日免費禮物
+              </div>
+              <div style={{ fontSize: 11, color: '#047857', fontWeight: 700, marginTop: 2 }}>
+                {canClaimDailyGift
+                  ? '每天凌晨 00:00 更新！內含四色花瓣與花蜜補給'
+                  : '今日禮物已領取（明天凌晨 00:00 再來領！）'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={onClaimDailyGift}
+            disabled={!canClaimDailyGift}
+            style={{
+              border: 'none',
+              background: canClaimDailyGift
+                ? 'linear-gradient(135deg, #10B981, #059669)'
+                : '#CBD5E1',
+              color: '#FFFFFF',
+              fontWeight: 900,
+              fontSize: 12,
+              padding: '10px 16px',
+              borderRadius: 99,
+              cursor: canClaimDailyGift ? 'pointer' : 'not-allowed',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {canClaimDailyGift ? '免費領取' : '已領取'}
+          </button>
+        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {shopItems.map((item) => (
@@ -1072,6 +1138,242 @@ export const SettingsModal: React.FC<{
           }}
         >
           📍 檢查 / 請求授權
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+/* ==================== 6D. 📷 AR 相機拍照子頁面 ==================== */
+export const ARCameraModal: React.FC<{
+  squadCreatures: DeGuaCreature[];
+  onClose: () => void;
+}> = ({ squadCreatures, onClose }) => {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1090,
+        background: '#0F172A',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        overflow: 'hidden'
+      }}
+    >
+      {photoUrl ? (
+        <img
+          src={photoUrl}
+          alt="AR 背景"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover'
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, #93C5FD 0%, #DCFCE7 55%, #4ADE80 100%)'
+          }}
+        />
+      )}
+
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 5,
+          padding: 'var(--top-safe-hud) 16px 0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <div
+          style={{
+            background: 'rgba(15,23,42,0.52)',
+            color: '#FFFFFF',
+            borderRadius: 99,
+            padding: '6px 14px',
+            fontSize: 13,
+            fontWeight: 900
+          }}
+        >
+          📷 地瓜球 AR 相機
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.75)',
+            background: 'rgba(15,23,42,0.5)',
+            color: '#FFFFFF',
+            fontSize: 18,
+            fontWeight: 900,
+            cursor: 'pointer'
+          }}
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* 前景可愛地瓜球小隊合影 */}
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 5,
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'center',
+          gap: 6,
+          paddingBottom: 20
+        }}
+      >
+        {squadCreatures.slice(0, 6).map((c) => (
+          <DeGuaCharacter
+            key={c.id}
+            variety={c.variety}
+            decor={c.decor}
+            leafStage={c.leafStage}
+            flowerColor={c.flowerColor}
+            showDecor={c.hasDecor}
+            size={62}
+            isBouncing={true}
+          />
+        ))}
+      </div>
+
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 5,
+          padding: '0 20px max(26px, env(safe-area-inset-bottom))',
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 12
+        }}
+      >
+        <label
+          style={{
+            background: '#FFFFFF',
+            color: '#0F172A',
+            borderRadius: 99,
+            padding: '12px 24px',
+            fontSize: 14,
+            fontWeight: 900,
+            cursor: 'pointer',
+            boxShadow: '0 6px 18px rgba(0,0,0,0.28)'
+          }}
+        >
+          📸 拍攝環境照片合影
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) {
+                setPhotoUrl(URL.createObjectURL(f));
+              }
+            }}
+          />
+        </label>
+      </div>
+    </div>
+  );
+};
+
+/* ==================== 6E. 🏃 參加活動子頁面 ==================== */
+export const ActivityEventsModal: React.FC<{
+  todaySteps: number;
+  mushroomsDestroyed: number;
+  missionTarget: number;
+  onClaimMission: () => void;
+  onClose: () => void;
+}> = ({ todaySteps, mushroomsDestroyed, missionTarget, onClaimMission, onClose }) => (
+  <div
+    onClick={onClose}
+    style={{
+      position: 'fixed',
+      inset: 0,
+      zIndex: 1050,
+      background: 'rgba(15, 23, 42, 0.52)',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'flex-end'
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        background: '#F8FAFC',
+        borderRadius: '30px 30px 0 0',
+        height: '76lvh',
+        padding: '20px 18px 28px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        overflowY: 'auto'
+      }}
+    >
+      <ModalHeader title="🏃 參加活動" subtitle="每週散步挑戰與每月飾品活動" onClose={onClose} />
+      <div
+        style={{
+          background: '#FFFFFF',
+          borderRadius: 20,
+          padding: 16,
+          border: '1.5px solid #E2E8F0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 900, color: '#0F172A' }}>
+          👟 每週目標：累積 30,000 步散步挑戰
+        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#475569' }}>
+          今日所在時區步數：{todaySteps.toLocaleString()} 步（每日凌晨 00:00 自動歸零重算）
+        </div>
+      </div>
+
+      <div
+        style={{
+          background: '#FFFFFF',
+          borderRadius: 20,
+          padding: 16,
+          border: '1.5px solid #FDE68A',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 900, color: '#78350F' }}>
+          🍄 目前活動任務：摧毀 {missionTarget} 朵蘑菇（{mushroomsDestroyed}/{missionTarget}）
+        </div>
+        <button
+          onClick={onClaimMission}
+          style={{
+            border: 'none',
+            background: mushroomsDestroyed >= missionTarget ? '#22C55E' : '#F59E0B',
+            color: '#FFFFFF',
+            borderRadius: 99,
+            padding: '10px 16px',
+            fontSize: 13,
+            fontWeight: 900,
+            cursor: 'pointer'
+          }}
+        >
+          {mushroomsDestroyed >= missionTarget ? '🎁 領取獎勵！' : '查看附近蘑菇'}
         </button>
       </div>
     </div>

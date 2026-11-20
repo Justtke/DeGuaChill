@@ -50,7 +50,24 @@ import WebKit
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "DeGuaNative")
         webView.configuration.userContentController.add(self, name: "DeGuaNative")
         startHardwareStepTracking()
+        syncTodayStepsFromMidnight()
         requestNativeSingleLocationIfAuthorized()
+    }
+
+    private func syncTodayStepsFromMidnight() {
+        guard CMPedometer.isStepCountingAvailable() else { return }
+        let now = Date()
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        pedometer.queryPedometerData(from: startOfToday, to: now) { [weak self] data, error in
+            guard let self = self, error == nil, let pedData = data else { return }
+            let todayTotal = pedData.numberOfSteps.intValue
+            DispatchQueue.main.async {
+                self.webView?.evaluateJavaScript(
+                    "window.DeGuaNativeCallback && window.DeGuaNativeCallback.onNativeStepDelta && window.DeGuaNativeCallback.onNativeStepDelta(0, \(todayTotal));",
+                    completionHandler: nil
+                )
+            }
+        }
     }
 
     private func currentLocationAuthorizationStatus() -> CLAuthorizationStatus {
@@ -141,7 +158,10 @@ import WebKit
         let now = Date()
         guard now.timeIntervalSince(lastStepCheckDate) >= 3.0 else { return }
 
-        pedometer.queryPedometerData(from: lastStepCheckDate, to: now) { [weak self] data, error in
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        let effectiveFrom = lastStepCheckDate < startOfToday ? startOfToday : lastStepCheckDate
+
+        pedometer.queryPedometerData(from: effectiveFrom, to: now) { [weak self] data, error in
             guard let self = self, error == nil, let pedData = data else { return }
             let delta = pedData.numberOfSteps.intValue
             self.lastStepCheckDate = now
@@ -149,6 +169,8 @@ import WebKit
 
             if delta > 0 {
                 self.applyStepDeltaInBackground(deltaSteps: delta)
+            } else {
+                self.syncTodayStepsFromMidnight()
             }
         }
     }
@@ -175,11 +197,16 @@ import WebKit
 
         savePersistedState()
 
-        DispatchQueue.main.async { [weak self] in
-            self?.webView?.evaluateJavaScript(
-                "window.DeGuaNativeCallback && window.DeGuaNativeCallback.onNativeStepDelta && window.DeGuaNativeCallback.onNativeStepDelta(\(deltaSteps), 0);",
-                completionHandler: nil
-            )
+        let now = Date()
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        pedometer.queryPedometerData(from: startOfToday, to: now) { [weak self] data, _ in
+            let todayTotal = data?.numberOfSteps.intValue ?? 0
+            DispatchQueue.main.async {
+                self?.webView?.evaluateJavaScript(
+                    "window.DeGuaNativeCallback && window.DeGuaNativeCallback.onNativeStepDelta && window.DeGuaNativeCallback.onNativeStepDelta(\(deltaSteps), \(todayTotal));",
+                    completionHandler: nil
+                )
+            }
         }
     }
 

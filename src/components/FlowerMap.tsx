@@ -112,19 +112,24 @@ function paintFinalTypeToCanvas(
       const t = finalType[idx];
 
       if (t === 2) {
-        // 水域 (#7DD3FC)
-        dst[p] = 125;
-        dst[p + 1] = 211;
-        dst[p + 2] = 252;
+        // 水域
+        dst[p] = isMini ? 168 : 125;
+        dst[p + 1] = isMini ? 216 : 211;
+        dst[p + 2] = isMini ? 250 : 252;
         dst[p + 3] = 255;
       } else if (t === 1) {
-        // 奶油米白道路 (#F4F0D6) 與柔和路緣 (#C8C49E)
+        // 道路
         const isEdge =
           (x > 0 && finalType[idx - 1] !== 1) ||
           (x < 255 && finalType[idx + 1] !== 1) ||
           (y > 0 && finalType[idx - 256] !== 1) ||
           (y < 255 && finalType[idx + 256] !== 1);
-        if (isEdge) {
+        if (isMini) {
+          dst[p] = isEdge ? 236 : 252;
+          dst[p + 1] = isEdge ? 218 : 239;
+          dst[p + 2] = isEdge ? 162 : 196;
+          dst[p + 3] = 255;
+        } else if (isEdge) {
           dst[p] = 200;
           dst[p + 1] = 196;
           dst[p + 2] = 158;
@@ -136,22 +141,30 @@ function paintFinalTypeToCanvas(
           dst[p + 3] = 255;
         }
       } else {
-        // 乾淨平整的皮克敏翠綠街廓 (#60B354)，緊貼道路內側繪製平滑亮綠街廓輪廓線 (#82CC78)
-        const nearRoad =
-          (x > 1 && finalType[idx - 2] === 1) ||
-          (x < 254 && finalType[idx + 2] === 1) ||
-          (y > 1 && finalType[idx - 512] === 1) ||
-          (y < 254 && finalType[idx + 512] === 1);
-        if (nearRoad && !isMini) {
-          dst[p] = 130;
-          dst[p + 1] = 204;
-          dst[p + 2] = 120;
+        if (isMini) {
+          // 皮克敏首頁小地圖：清爽淡雅奶白底色，凸顯綠色迷霧與腳印！
+          dst[p] = 247;
+          dst[p + 1] = 247;
+          dst[p + 2] = 242;
           dst[p + 3] = 255;
         } else {
-          dst[p] = 96;
-          dst[p + 1] = 179;
-          dst[p + 2] = 84;
-          dst[p + 3] = 255;
+          // 乾淨平整的皮克敏翠綠街廓 (#60B354)，緊貼道路內側繪製平滑亮綠街廓輪廓線 (#82CC78)
+          const nearRoad =
+            (x > 1 && finalType[idx - 2] === 1) ||
+            (x < 254 && finalType[idx + 2] === 1) ||
+            (y > 1 && finalType[idx - 512] === 1) ||
+            (y < 254 && finalType[idx + 512] === 1);
+          if (nearRoad) {
+            dst[p] = 130;
+            dst[p + 1] = 204;
+            dst[p + 2] = 120;
+            dst[p + 3] = 255;
+          } else {
+            dst[p] = 96;
+            dst[p + 1] = 179;
+            dst[p + 2] = 84;
+            dst[p + 3] = 255;
+          }
         }
       }
     }
@@ -1059,46 +1072,86 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     if (!group) return;
     group.clearLayers();
 
-    // ==================== 模式 A：主畫面紅框靜態「今日足跡概覽地圖」 ====================
+    // ==================== 模式 A：主畫面紅框靜態「今日足跡概覽地圖」（對照皮克敏圖二淡雅綠霧＋白邊雙腳腳印！） ====================
     if (isMini) {
+      const plantedList = Object.values(flowers);
+      const trailPoints: [number, number][] =
+        plantedList.length >= 3
+          ? plantedList.slice(-8).map((c) => [c.lat, c.lng])
+          : [
+              [myLat - 0.0014, myLng - 0.0011],
+              [myLat - 0.001, myLng - 0.00075],
+              [myLat - 0.00055, myLng - 0.00035],
+              [myLat - 0.00015, myLng + 0.00005],
+              [myLat + 0.00025, myLng + 0.0004],
+              [myLat + 0.00065, myLng + 0.00075]
+            ];
+
+      // 柔和散開的足跡翠綠探索霧雲
       L.circle([myLat, myLng], {
         radius: 260,
         color: '#22C55E',
         weight: 0,
         fillColor: '#4ADE80',
-        fillOpacity: 0.34,
+        fillOpacity: 0.22,
         interactive: false
       }).addTo(group);
 
-      const plantedList = Object.values(flowers);
-      const trailPoints: [number, number][] =
-        plantedList.length >= 3
-          ? plantedList.slice(-9).map((c) => [c.lat, c.lng])
-          : [
-              [myLat - 0.0014, myLng - 0.0011],
-              [myLat - 0.001, myLng - 0.0008],
-              [myLat - 0.0006, myLng - 0.0005],
-              [myLat - 0.0003, myLng - 0.0002],
-              [myLat, myLng],
-              [myLat + 0.0003, myLng + 0.0003],
-              [myLat + 0.0007, myLng + 0.0006]
-            ];
-
       trailPoints.forEach(([tLat, tLng], idx) => {
-        const isCurrent = idx === Math.floor(trailPoints.length / 2);
+        L.circle([tLat, tLng], {
+          radius: 120,
+          weight: 0,
+          fillColor: '#34D399',
+          fillOpacity: 0.14,
+          interactive: false
+        }).addTo(group);
+
+        const nextPt = trailPoints[Math.min(trailPoints.length - 1, idx + 1)];
+        const prevPt = trailPoints[Math.max(0, idx - 1)];
+        const dLat = nextPt[0] - prevPt[0];
+        const dLng = nextPt[1] - prevPt[1];
+        const angleDeg = (Math.atan2(dLng, dLat) * 180) / Math.PI;
+        const isLast = idx === trailPoints.length - 1;
+
+        if (isLast) {
+          const destIcon = L.divIcon({
+            className: 'mini-footprint-head',
+            html: `<div style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center;">
+              <svg width="24" height="24" viewBox="0 0 28 28" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,0.22));">
+                <circle cx="14" cy="7" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
+                <circle cx="20" cy="12" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
+                <circle cx="18" cy="19" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
+                <circle cx="10" cy="19" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
+                <circle cx="8" cy="12" r="4.5" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.3"/>
+                <circle cx="14" cy="13.5" r="3.4" fill="#FDE047"/>
+              </svg>
+            </div>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
+          L.marker([tLat, tLng], { icon: destIcon, interactive: false }).addTo(group);
+          return;
+        }
+
+        const isLeftLead = idx % 2 === 0;
         const fpIcon = L.divIcon({
-          className: 'mini-footprint-dot',
-          html: `<div style="
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: #10B981;
-            border: 2.5px solid #FFFFFF;
-            box-shadow: 0 0 8px rgba(16,185,129,0.65);
-            transform: scale(${isCurrent ? 1.35 : 0.95});
-          "></div>`,
-          iconSize: [14, 14],
-          iconAnchor: [7, 7]
+          className: 'mini-footprint-step',
+          html: `<div style="transform: rotate(${angleDeg.toFixed(1)}deg);filter: drop-shadow(0 1px 2px rgba(0,0,0,0.22));">
+            <svg width="20" height="20" viewBox="0 0 24 24">
+              <!-- 左腳鞋印 -->
+              <g transform="translate(${isLeftLead ? 0 : 0}, ${isLeftLead ? -1.5 : 1.5})">
+                <ellipse cx="8" cy="9" rx="2.7" ry="4.1" fill="#10B981" stroke="#FFFFFF" stroke-width="1.4"/>
+                <circle cx="8" cy="15.2" r="1.9" fill="#10B981" stroke="#FFFFFF" stroke-width="1.3"/>
+              </g>
+              <!-- 右腳鞋印 -->
+              <g transform="translate(0, ${isLeftLead ? 1.5 : -1.5})">
+                <ellipse cx="16" cy="9" rx="2.7" ry="4.1" fill="#10B981" stroke="#FFFFFF" stroke-width="1.4"/>
+                <circle cx="16" cy="15.2" r="1.9" fill="#10B981" stroke="#FFFFFF" stroke-width="1.3"/>
+              </g>
+            </svg>
+          </div>`,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
         });
         L.marker([tLat, tLng], { icon: fpIcon, interactive: false }).addTo(group);
       });
