@@ -96,26 +96,26 @@ function createInitialMeadowFruits(): MeadowFruitDrop[] {
 }
 
 const WhistleIconSvg: React.FC = () => (
-  <svg width="34" height="28" viewBox="0 0 42 32" fill="none">
+  <svg width="86%" height="86%" viewBox="0 0 42 32" fill="none" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.25))' }}>
     <path
-      d="M8 10H26C31.5 10 35 13.8 35 19C35 24.5 30.8 28 25.5 28C21 28 17.5 25.2 16.5 21H7.5C6.1 21 5 19.9 5 18.5V13C5 11.3 6.3 10 8 10Z"
+      d="M7 9.5H27C32.5 9.5 36.5 13.8 36.5 19.5C36.5 25.2 31.8 29 26 29C21 29 17.5 25.8 16.5 21.5H6.5C5 21.5 4 20.4 4 19V12.5C4 10.8 5.3 9.5 7 9.5Z"
       fill="#F8FAFC"
       stroke="#334155"
       strokeWidth="2"
       strokeLinejoin="round"
     />
-    <circle cx="25.5" cy="19" r="4.5" fill="#94A3B8" stroke="#334155" strokeWidth="1.5" />
-    <path d="M35 15.5C37.5 15.5 39 17.2 39 19.5C39 21.8 37.5 23.5 35 23.5" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" />
-    <rect x="8" y="13" width="6" height="3" rx="1.5" fill="#38BDF8" />
+    <circle cx="26" cy="19.5" r="4.8" fill="#94A3B8" stroke="#334155" strokeWidth="1.5" />
+    <path d="M36.5 15.5C39.2 15.5 40.8 17.3 40.8 19.6C40.8 22 39.2 23.8 36.5 23.8" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" />
+    <rect x="7.5" y="13" width="6.5" height="3.2" rx="1.6" fill="#38BDF8" />
   </svg>
 );
 
 const FryerPotIconSvg: React.FC = () => (
-  <svg width="30" height="28" viewBox="0 0 36 32" fill="none">
-    <ellipse cx="18" cy="24" rx="13" ry="5" fill="#14B8A6" stroke="#FFFFFF" strokeWidth="1.5" />
-    <ellipse cx="18" cy="19" rx="9" ry="5.5" fill="#78350F" stroke="#FDE68A" strokeWidth="1.4" />
-    <ellipse cx="18" cy="17.5" rx="7" ry="3.2" fill="#92400E" />
-    <path d="M18 16C18 11 21 7 25 6C24 10 21 13 18 16Z" fill="#4ADE80" stroke="#15803D" strokeWidth="1" />
+  <svg width="84%" height="84%" viewBox="0 0 36 32" fill="none" style={{ filter: 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.24))' }}>
+    <ellipse cx="18" cy="24" rx="14" ry="5.5" fill="#14B8A6" stroke="#FFFFFF" strokeWidth="1.5" />
+    <ellipse cx="18" cy="19" rx="10" ry="6" fill="#92400E" stroke="#FDE68A" strokeWidth="1.4" />
+    <circle cx="18" cy="15.5" r="5" fill="#FBBF24" stroke="#B45309" strokeWidth="1.2" />
+    <path d="M18 10C15 6 22 6 19.5 10" stroke="#4ADE80" strokeWidth="2.2" strokeLinecap="round" />
   </svg>
 );
 
@@ -644,32 +644,23 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
       ))}
 
       {/* ==================== 底部操作列（完全對照圖 5 皮克敏花園） ==================== */}
-      {/* 左下角：圓形 ✕ 返回主畫面 */}
+      {/* 左下角：統一透明立體光澤 ✕ 返回主畫面 */}
       <button
+        className="pikmin-glass-circle-btn"
         onClick={onCloseGarden}
         style={{
           position: 'absolute',
-          left: 16,
-          bottom: 'max(18px, env(safe-area-inset-bottom))',
+          left: 'clamp(14px, 4vw, 18px)',
+          bottom: 'max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
           zIndex: 40,
-          width: 48,
-          height: 48,
-          borderRadius: '50%',
-          border: '2px solid rgba(255,255,255,0.7)',
-          background: 'rgba(15, 23, 42, 0.34)',
-          backdropFilter: 'blur(8px)',
-          color: '#FFFFFF',
-          fontSize: 20,
-          fontWeight: 900,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.22)'
+          width: 'clamp(48px, 6.2lvh, 56px)',
+          height: 'clamp(48px, 6.2lvh, 56px)'
         }}
-        title="關閉花園"
+        title="返回主畫面"
       >
-        ✕
+        <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+          <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+        </svg>
       </button>
 
       {/* 中央下方：精華花蜜玻璃球（點擊投餵 / 點下方角標切換四色花蜜） */}
@@ -804,19 +795,12 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
       >
         {/* 切換隊伍 / 地瓜球總數與最愛管理 */}
         <button
+          className="pikmin-glass-circle-btn"
           onClick={() => setIsCrewSheetOpen(true)}
           style={{
             position: 'relative',
-            width: 50,
-            height: 50,
-            borderRadius: '50%',
-            border: '2px solid rgba(255,255,255,0.85)',
-            background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.88), rgba(16,185,129,0.9))',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 6px 14px rgba(0,0,0,0.24)'
+            width: 'clamp(50px, 6.4lvh, 58px)',
+            height: 'clamp(50px, 6.4lvh, 58px)'
           }}
           title="切換隊伍 / 標記最愛地瓜球"
         >
@@ -826,7 +810,7 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
             leafStage="leaf"
             flowerColor="white"
             showDecor={false}
-            size={30}
+            size={40}
           />
           <span
             style={{
@@ -846,64 +830,57 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
           </span>
         </button>
 
-        {/* 🌼 開啟種花 */}
+        {/* 開啟種花 */}
         <button
+          className="pikmin-glass-circle-btn"
           onClick={onOpenPlanting}
           style={{
-            width: 50,
-            height: 50,
-            borderRadius: '50%',
-            border: '2px solid rgba(255,255,255,0.85)',
-            background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.88), rgba(16,185,129,0.9))',
-            fontSize: 22,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 6px 14px rgba(0,0,0,0.24)'
+            width: 'clamp(50px, 6.4lvh, 58px)',
+            height: 'clamp(50px, 6.4lvh, 58px)'
           }}
           title="開啟種花花瓣庫"
         >
-          🌼
+          <svg width="86%" height="86%" viewBox="0 0 36 36" style={{ filter: 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.22))' }}>
+            <g transform="translate(13.5, 14)">
+              <circle cx="0" cy="-7" r="4.6" fill="#FFFFFF" />
+              <circle cx="6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+              <circle cx="4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+              <circle cx="-4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+              <circle cx="-6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+              <circle cx="0" cy="0" r="3.4" fill="#FACC15" />
+            </g>
+            <g transform="translate(24.5, 23.5) scale(0.76)">
+              <circle cx="0" cy="-7" r="4.6" fill="#FFFFFF" />
+              <circle cx="6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+              <circle cx="4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+              <circle cx="-4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+              <circle cx="-6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+              <circle cx="0" cy="0" r="3.4" fill="#FACC15" />
+            </g>
+          </svg>
         </button>
 
-        {/* 🍳 前往油鍋 */}
+        {/* 前往油鍋 */}
         <button
+          className="pikmin-glass-circle-btn"
           onClick={onOpenPlanter}
           style={{
-            width: 50,
-            height: 50,
-            borderRadius: '50%',
-            border: '2px solid rgba(255,255,255,0.85)',
-            background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.88), rgba(16,185,129,0.9))',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 6px 14px rgba(0,0,0,0.24)'
+            width: 'clamp(50px, 6.4lvh, 58px)',
+            height: 'clamp(50px, 6.4lvh, 58px)'
           }}
           title="查看油鍋瓜糰"
         >
           <FryerPotIconSvg />
         </button>
 
-        {/* 😗 吹口哨（點一下集合 / 點兩下一次收所有果實） */}
+        {/* 吹口哨（點一下集合 / 點兩下一次收所有果實） */}
         <button
+          className="pikmin-glass-circle-btn"
           onClick={handleWhistleButtonTap}
           style={{
             position: 'relative',
-            width: 62,
-            height: 62,
-            borderRadius: '50%',
-            border: '3px solid rgba(255,255,255,0.92)',
-            background:
-              'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.95), rgba(5,150,105,0.96))',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow:
-              '0 8px 20px rgba(0,0,0,0.3), inset 0 3px 8px rgba(255,255,255,0.7)'
+            width: 'clamp(58px, 7.6lvh, 68px)',
+            height: 'clamp(58px, 7.6lvh, 68px)'
           }}
           title="點一下集合，點兩下一次收果實！"
         >

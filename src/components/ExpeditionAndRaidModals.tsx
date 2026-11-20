@@ -1393,31 +1393,23 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
           )}
         </div>
 
-        {/* ==================== 底部懸浮關閉按鈕 (✕) 與「🎖️ 飾品一覽」膠囊（完全對照圖一左下與右下！） ==================== */}
+        {/* ==================== 底部懸浮關閉按鈕 (✕) 與「🎖️ 飾品一覽」膠囊 ==================== */}
         <button
+          className="pikmin-glass-circle-btn"
           onClick={onClose}
           style={{
             position: 'absolute',
-            left: 18,
-            bottom: 'max(18px, env(safe-area-inset-bottom))',
+            left: 'clamp(14px, 4vw, 18px)',
+            bottom: 'max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
             zIndex: 50,
-            width: 48,
-            height: 48,
-            borderRadius: '50%',
-            border: '1px solid #E2E8F0',
-            background: '#FFFFFF',
-            color: '#1E293B',
-            fontSize: 20,
-            fontWeight: 800,
-            cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.16)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            width: 'clamp(48px, 6.2lvh, 56px)',
+            height: 'clamp(48px, 6.2lvh, 56px)'
           }}
           title="關閉返回"
         >
-          ✕
+          <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+            <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+          </svg>
         </button>
 
         <button
@@ -1496,27 +1488,22 @@ export const DetectorModal: React.FC<DetectorModalProps> = ({
           boxShadow: '0 20px 50px rgba(0,0,0,0.4)'
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <button
-            onClick={onClose}
-            style={{
-              border: 'none',
-              background: '#1E293B',
-              color: '#FFFFFF',
-              borderRadius: 99,
-              padding: '6px 14px',
-              fontSize: 12,
-              fontWeight: 900,
-              cursor: 'pointer'
-            }}
-          >
-            ← 返回
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ fontSize: 17, fontWeight: 900, color: '#0F172A' }}>📡 探測器</div>
         </div>
         <div style={{ fontSize: 12, color: '#64748B', fontWeight: 700, marginTop: 4 }}>
           探測目前位置周圍的水果與野生瓜糰
         </div>
+
+        <button
+          className="pikmin-glass-circle-btn pikmin-glass-close-fab"
+          onClick={onClose}
+          title="返回主畫面"
+        >
+          <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+            <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+          </svg>
+        </button>
 
         <div
           style={{
@@ -2135,31 +2122,16 @@ export const MushroomBattleModal: React.FC<MushroomBattleModalProps> = ({
         )}
       </div>
 
-      {/* ==================== 底部懸浮導覽鈕：< 返回（回到探險頁或地圖） ｜ 📍 前往這裡 ==================== */}
+      {/* ==================== 底部懸浮導覽鈕：統一透明光澤 ✕ 返回 ｜ 📍 前往這裡 ==================== */}
       <button
+        className="pikmin-glass-circle-btn pikmin-glass-close-fab"
         onClick={onClose}
-        style={{
-          position: 'fixed',
-          left: 18,
-          bottom: 'max(18px, env(safe-area-inset-bottom))',
-          zIndex: 1320,
-          width: 48,
-          height: 48,
-          borderRadius: '50%',
-          border: '1px solid #E2E8F0',
-          background: '#FFFFFF',
-          color: '#1E293B',
-          fontSize: 20,
-          fontWeight: 900,
-          cursor: 'pointer',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.16)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-        title="返回"
+        style={{ zIndex: 1320 }}
+        title="關閉返回"
       >
-        &lt;
+        <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+          <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+        </svg>
       </button>
 
       {onNavigateToMap && (

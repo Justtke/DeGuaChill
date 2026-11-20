@@ -1068,31 +1068,16 @@ export const FlowerPlantingModal: React.FC<FlowerPlantingModalProps> = ({
         </div>
       </div>
 
-      {/* 左下角漂浮白色圓形返回 < 按鈕（完全對照皮克敏） */}
+      {/* 左下角統一透明光澤 ✕ 關閉鈕 */}
       <button
+        className="pikmin-glass-circle-btn pikmin-glass-close-fab"
         onClick={onClose}
-        style={{
-          position: 'fixed',
-          left: 16,
-          bottom: 'max(18px, env(safe-area-inset-bottom))',
-          width: 46,
-          height: 46,
-          borderRadius: '50%',
-          border: 'none',
-          background: '#FFFFFF',
-          color: '#334155',
-          fontSize: 22,
-          fontWeight: 900,
-          cursor: 'pointer',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 25
-        }}
-        title="返回"
+        style={{ zIndex: 25 }}
+        title="返回主畫面"
       >
-        ‹
+        <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+          <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+        </svg>
       </button>
     </div>
   );

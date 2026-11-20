@@ -2895,9 +2895,10 @@ export const App: React.FC = () => {
               bannerText={plantingBanner}
             />
 
-            {/* 圖一左上角：半透明圓形天氣鈕（未種花加速時顯示） */}
+            {/* 圖一左上角：統一透明玻璃光澤天氣鈕（放大雲朵向量圖示） */}
             {mapPerspective === 'surround' && !(isPlanting && isAccelActive) && (
               <button
+                className="pikmin-glass-circle-btn"
                 onClick={() => requestAndApplyRealLocation(false, true)}
                 style={{
                   position: 'absolute',
@@ -2905,26 +2906,24 @@ export const App: React.FC = () => {
                   left: 16,
                   zIndex: 500,
                   width: 44,
-                  height: 44,
-                  borderRadius: '50%',
-                  border: 'none',
-                  background: 'rgba(255,255,255,0.68)',
-                  backdropFilter: 'blur(6px)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 22,
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.12)'
+                  height: 44
                 }}
                 title="目前天氣與重新定位"
               >
-                ☁️
+                <svg width="78%" height="78%" viewBox="0 0 28 24" fill="none">
+                  <path
+                    d="M8.5 18.5H20.5C23 18.5 25 16.5 25 14C25 11.7 23.2 9.8 20.9 9.5C20.2 6.4 17.4 4 14 4C10.5 4 7.7 6.5 7.1 9.8C4.8 10.3 3 12.3 3 14.7C3 16.8 5.4 18.5 8.5 18.5Z"
+                    fill="#FFFFFF"
+                    stroke="#CBD5E1"
+                    strokeWidth="1.2"
+                  />
+                </svg>
               </button>
             )}
 
-            {/* 右上角：半透明圓形指北針（隨 360° 視角旋轉，點擊可立即回正北方 0°） */}
+            {/* 右上角：統一透明玻璃光澤指北針（隨 360° 視角旋轉，點擊可立即回正北方 0°） */}
             <button
+              className="pikmin-glass-circle-btn"
               onClick={() => {
                 setMapBearing(0);
                 showToast('🧭 已將視角回正北方（0°）');
@@ -2936,24 +2935,15 @@ export const App: React.FC = () => {
                 zIndex: 500,
                 width: 44,
                 height: 44,
-                borderRadius: '50%',
-                border: 'none',
-                background: 'rgba(15, 23, 42, 0.42)',
-                backdropFilter: 'blur(6px)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 22,
-                cursor: 'pointer',
                 transform: `rotate(${mapBearing.toFixed(1)}deg)`,
                 transition: 'transform 0.1s linear'
               }}
               title="點擊回正北方視角 (0°)"
             >
-              <svg width="24" height="24" viewBox="0 0 24 24">
-                <polygon points="12,3 15.2,12 12,10.5 8.8,12" fill="#EF4444" />
-                <polygon points="12,21 15.2,12 12,13.5 8.8,12" fill="#E2E8F0" />
-                <circle cx="12" cy="12" r="1.6" fill="#FFFFFF" />
+              <svg width="76%" height="76%" viewBox="0 0 24 24">
+                <polygon points="12,2.5 16,12 12,10.2 8,12" fill="#EF4444" stroke="#FFFFFF" strokeWidth="0.6" />
+                <polygon points="12,21.5 16,12 12,13.8 8,12" fill="#E2E8F0" stroke="#94A3B8" strokeWidth="0.5" />
+                <circle cx="12" cy="12" r="1.8" fill="#FFFFFF" />
               </svg>
             </button>
 
@@ -2986,31 +2976,23 @@ export const App: React.FC = () => {
               </button>
             )}
 
-            {/* 左下角：圓形綠色 < 返回主畫面按鈕（圖一、圖二共通） */}
+            {/* 左下角：統一透明立體光澤 ✕ 返回主畫面按鈕 */}
             <button
+              className="pikmin-glass-circle-btn"
               onClick={() => setIsInteractiveMapOpen(false)}
               style={{
                 position: 'absolute',
-                left: 18,
-                bottom: 'max(22px, env(safe-area-inset-bottom))',
+                left: 'clamp(14px, 4vw, 18px)',
+                bottom: 'max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
                 zIndex: 500,
-                width: 52,
-                height: 52,
-                borderRadius: '50%',
-                border: '2px solid rgba(255,255,255,0.75)',
-                background: 'radial-gradient(circle at 30% 30%, rgba(74, 222, 128, 0.85), rgba(21, 128, 61, 0.92))',
-                color: '#FFFFFF',
-                fontSize: 22,
-                fontWeight: 900,
-                cursor: 'pointer',
-                boxShadow: '0 6px 16px rgba(0,0,0,0.28), inset 0 2px 6px rgba(255,255,255,0.55)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
+                width: 'clamp(48px, 6.2lvh, 56px)',
+                height: 'clamp(48px, 6.2lvh, 56px)'
               }}
               title="返回主畫面"
             >
-              &lt;
+              <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+                <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+              </svg>
             </button>
 
             {/* 底部正中央：【🚶 周圍視角 ｜ 🗺️ 俯瞰視角】雙切換膠囊（完全對照圖一、圖二底部中央！） */}
@@ -3073,39 +3055,38 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            {/* 右下角：在「圖一：周圍視角」顯示四顆透明綠玻璃球；在「圖二：俯瞰視角」顯示單顆 🎯 定位圓鈕！ */}
+            {/* 右下角：統一透明玻璃光澤圓鈕（內部圖形依比例放大到接近邊緣，對照皮克敏） */}
             {mapPerspective === 'surround' ? (
               <div
                 style={{
                   position: 'absolute',
-                  right: 16,
-                  bottom: 'max(18px, env(safe-area-inset-bottom))',
+                  right: 'clamp(14px, 4vw, 18px)',
+                  bottom: 'max(1.9lvh, env(safe-area-inset-bottom) + 5px)',
                   zIndex: 500,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: 12
+                  gap: 'clamp(8px, 1.1lvh, 12px)'
                 }}
               >
-                {/* 1. 📡 探測器 */}
+                {/* 1. 探測器 */}
                 <button
+                  className="pikmin-glass-circle-btn"
                   onClick={() => setIsDetectorOpen(true)}
                   style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: '50%',
-                    border: '2px solid rgba(255,255,255,0.85)',
-                    background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.78), rgba(16,185,129,0.85))',
-                    fontSize: 24,
-                    cursor: 'pointer',
-                    boxShadow: '0 6px 16px rgba(0,0,0,0.25), inset 0 3px 8px rgba(255,255,255,0.65)',
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    width: 'clamp(50px, 6.4lvh, 58px)',
+                    height: 'clamp(50px, 6.4lvh, 58px)',
+                    position: 'relative'
                   }}
+                  title="探測器"
                 >
-                  📡
+                  <svg width="80%" height="80%" viewBox="0 0 36 36" fill="none" style={{ filter: 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.25))' }}>
+                    <circle cx="18" cy="18" r="12" stroke="#E2E8F0" strokeWidth="2.2" fill="rgba(255,255,255,0.18)" />
+                    <path d="M11 24C11 16.5 16.5 11 24 11" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
+                    <path d="M14.5 24C14.5 18.8 18.8 14.5 24 14.5" stroke="#BAE6FD" strokeWidth="2.2" strokeLinecap="round" />
+                    <circle cx="22.5" cy="13.5" r="3" fill="#FDE047" stroke="#FFFFFF" strokeWidth="1.2" />
+                    <line x1="18" y1="24" x2="18" y2="30" stroke="#CBD5E1" strokeWidth="2.8" strokeLinecap="round" />
+                  </svg>
                   <span
                     style={{
                       position: 'absolute',
@@ -3123,27 +3104,17 @@ export const App: React.FC = () => {
                   </span>
                 </button>
 
-                {/* 2. 🌼 花朵（種花中顯示玻璃花瓶＋剩餘花瓣數與光暈，對照皮克敏影片） */}
+                {/* 2. 花朵（種花中顯示大比例玻璃瓶＋花瓣數） */}
                 <button
+                  className="pikmin-glass-circle-btn"
                   onClick={() => setShowPlantingDrawer(true)}
                   style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: '50%',
-                    border: isPlanting ? '2.5px solid #4ADE80' : '2px solid rgba(255,255,255,0.85)',
-                    background: isPlanting
-                      ? 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(187,247,208,0.92))'
-                      : 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.78), rgba(16,185,129,0.85))',
-                    fontSize: 25,
-                    cursor: 'pointer',
-                    boxShadow: isPlanting
-                      ? '0 0 20px rgba(74, 222, 128, 0.78), 0 6px 16px rgba(0,0,0,0.25)'
-                      : '0 6px 16px rgba(0,0,0,0.25), inset 0 3px 8px rgba(255,255,255,0.65)',
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    width: 'clamp(50px, 6.4lvh, 58px)',
+                    height: 'clamp(50px, 6.4lvh, 58px)',
+                    border: isPlanting ? '2px solid #4ADE80' : undefined,
+                    position: 'relative'
                   }}
+                  title="花朵種花"
                 >
                   {isPlanting ? (
                     <>
@@ -3151,7 +3122,7 @@ export const App: React.FC = () => {
                         color={activePetalColor}
                         petalCount={petalInventory[activePetalVariant.id] || 0}
                         shape={activePetalVariant.shape}
-                        size={34}
+                        size={40}
                         uid="map_btn"
                       />
                       <span
@@ -3172,79 +3143,93 @@ export const App: React.FC = () => {
                       </span>
                     </>
                   ) : (
-                    '🌼'
+                    <svg width="86%" height="86%" viewBox="0 0 36 36" style={{ filter: 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.22))' }}>
+                      <g transform="translate(13.5, 14)">
+                        <circle cx="0" cy="-7" r="4.6" fill="#FFFFFF" />
+                        <circle cx="6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+                        <circle cx="4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+                        <circle cx="-4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+                        <circle cx="-6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+                        <circle cx="0" cy="0" r="3.4" fill="#FACC15" />
+                      </g>
+                      <g transform="translate(24.5, 23.5) scale(0.76)">
+                        <circle cx="0" cy="-7" r="4.6" fill="#FFFFFF" />
+                        <circle cx="6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+                        <circle cx="4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+                        <circle cx="-4.1" cy="5.8" r="4.6" fill="#FFFFFF" />
+                        <circle cx="-6.5" cy="-2.2" r="4.6" fill="#FFFFFF" />
+                        <circle cx="0" cy="0" r="3.4" fill="#FACC15" />
+                      </g>
+                    </svg>
                   )}
                 </button>
 
-                {/* 3. 🍳 油鍋 */}
+                {/* 3. 油鍋 */}
                 <button
+                  className="pikmin-glass-circle-btn"
                   onClick={() => setIsPlanterOpen(true)}
                   style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: '50%',
-                    border: '2px solid rgba(255,255,255,0.85)',
-                    background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.78), rgba(16,185,129,0.85))',
-                    fontSize: 23,
-                    cursor: 'pointer',
-                    boxShadow: '0 6px 16px rgba(0,0,0,0.25), inset 0 3px 8px rgba(255,255,255,0.65)',
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    width: 'clamp(50px, 6.4lvh, 58px)',
+                    height: 'clamp(50px, 6.4lvh, 58px)',
+                    position: 'relative'
                   }}
+                  title="油鍋"
                 >
-                  🍳
+                  <svg width="84%" height="84%" viewBox="0 0 36 34" fill="none" style={{ filter: 'drop-shadow(0 1.5px 2px rgba(0,0,0,0.25))' }}>
+                    <ellipse cx="18" cy="24.5" rx="14.5" ry="5.5" fill="#14B8A6" stroke="#FFFFFF" strokeWidth="1.5" />
+                    <ellipse cx="18" cy="19.5" rx="10.5" ry="6" fill="#92400E" stroke="#FDE68A" strokeWidth="1.4" />
+                    <circle cx="18" cy="15.5" r="5.5" fill="#FBBF24" stroke="#B45309" strokeWidth="1.3" />
+                    <path d="M18 10C15 6 22 6 19.5 10" stroke="#4ADE80" strokeWidth="2.2" strokeLinecap="round" />
+                  </svg>
                 </button>
 
-                {/* 4. 😗 口哨 */}
+                {/* 4. 口哨 */}
                 <button
+                  className="pikmin-glass-circle-btn"
                   onClick={() => setIsGardenOpen(true)}
                   style={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: '50%',
-                    border: '2.5px solid rgba(255,255,255,0.9)',
-                    background: 'radial-gradient(circle at 30% 30%, rgba(167,243,208,0.85), rgba(5,150,105,0.92))',
-                    fontSize: 28,
-                    cursor: 'pointer',
-                    boxShadow: '0 8px 20px rgba(0,0,0,0.3), inset 0 3px 8px rgba(255,255,255,0.7)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    width: 'clamp(58px, 7.6lvh, 68px)',
+                    height: 'clamp(58px, 7.6lvh, 68px)'
                   }}
+                  title="口哨花園"
                 >
-                  😗
+                  <svg width="86%" height="86%" viewBox="0 0 44 34" fill="none" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.26))' }}>
+                    <path
+                      d="M7 9.5H27C33 9.5 37 13.8 37 19.5C37 25.5 32.2 29.5 26.2 29.5C21.2 29.5 17.5 26.2 16.5 21.8H6.5C5 21.8 4 20.6 4 19V12.8C4 11 5.3 9.5 7 9.5Z"
+                      fill="#F8FAFC"
+                      stroke="#334155"
+                      strokeWidth="2.1"
+                      strokeLinejoin="round"
+                    />
+                    <circle cx="26.5" cy="19.5" r="5" fill="#94A3B8" stroke="#334155" strokeWidth="1.6" />
+                    <path d="M37 15.5C40 15.5 41.5 17.4 41.5 19.8C41.5 22.2 40 24.2 37 24.2" stroke="#475569" strokeWidth="2.3" strokeLinecap="round" />
+                    <rect x="7.5" y="13" width="7" height="3.2" rx="1.6" fill="#38BDF8" />
+                  </svg>
                 </button>
               </div>
             ) : (
-              /* 圖二「俯瞰視角」右下角的單顆 🎯 定位回正圓鈕 */
+              /* 圖二「俯瞰視角」右下角的統一透明光澤定位回正圓鈕 */
               <button
+                className="pikmin-glass-circle-btn"
                 onClick={() => {
                   setRecenterSeq((s) => s + 1);
                   requestAndApplyRealLocation(false, true);
                 }}
                 style={{
                   position: 'absolute',
-                  right: 18,
-                  bottom: 'max(22px, env(safe-area-inset-bottom))',
+                  right: 'clamp(14px, 4vw, 18px)',
+                  bottom: 'max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
                   zIndex: 500,
-                  width: 52,
-                  height: 52,
-                  borderRadius: '50%',
-                  border: '2px solid rgba(255,255,255,0.75)',
-                  background: 'radial-gradient(circle at 30% 30%, rgba(74, 222, 128, 0.85), rgba(21, 128, 61, 0.92))',
-                  color: '#FFFFFF',
-                  fontSize: 22,
-                  cursor: 'pointer',
-                  boxShadow: '0 6px 16px rgba(0,0,0,0.28), inset 0 2px 6px rgba(255,255,255,0.55)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
+                  width: 'clamp(48px, 6.2lvh, 56px)',
+                  height: 'clamp(48px, 6.2lvh, 56px)'
                 }}
                 title="定位回正"
               >
-                🎯
+                <svg width="78%" height="78%" viewBox="0 0 28 28" fill="none">
+                  <circle cx="14" cy="14" r="9" stroke="#FFFFFF" strokeWidth="2.4" />
+                  <circle cx="14" cy="14" r="4" fill="#EF4444" stroke="#FFFFFF" strokeWidth="1.4" />
+                  <path d="M14 2V6.5M14 21.5V26M2 14H6.5M21.5 14H26" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" />
+                </svg>
               </button>
             )}
           </div>

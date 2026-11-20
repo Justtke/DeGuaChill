@@ -19,46 +19,38 @@ import { WalkingPlayerAvatar } from './WalkingPlayerAvatar';
 
 const ALL_VARIETIES: DeGuaVariety[] = ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'];
 
-/* ==================== 共通頂部返回主畫面標題列 ==================== */
+/* ==================== 共通標題列 ＋ 左下角統一玻璃光澤 ✕ 關閉鈕 ==================== */
 const ModalHeader: React.FC<{ title: string; subtitle?: string; onClose: () => void }> = ({
   title,
   subtitle,
   onClose
 }) => (
-  <div
-    style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingBottom: 12,
-      borderBottom: '1.5px solid #E2E8F0'
-    }}
-  >
-    <button
-      onClick={onClose}
+  <>
+    <div
       style={{
-        border: 'none',
-        background: '#1E293B',
-        color: '#FFFFFF',
-        borderRadius: 99,
-        padding: '8px 16px',
-        fontSize: 13,
-        fontWeight: 900,
-        cursor: 'pointer',
         display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        gap: 6
+        paddingBottom: 12,
+        borderBottom: '1.5px solid #E2E8F0'
       }}
     >
-      <span>←</span>
-      <span>返回主畫面</span>
-    </button>
-
-    <div style={{ textAlign: 'right' }}>
-      <div style={{ fontSize: 17, fontWeight: 900, color: '#0F172A' }}>{title}</div>
-      {subtitle && <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700 }}>{subtitle}</div>}
+      <div>
+        <div style={{ fontSize: 17, fontWeight: 900, color: '#0F172A' }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700, marginTop: 2 }}>{subtitle}</div>}
+      </div>
     </div>
-  </div>
+
+    <button
+      className="pikmin-glass-circle-btn pikmin-glass-close-fab"
+      onClick={onClose}
+      title="返回主畫面"
+    >
+      <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+        <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+      </svg>
+    </button>
+  </>
 );
 
 /* ==================== 1. 🎖️ 飾品一覽 (Decor Collection Modal) ==================== */
@@ -927,30 +919,15 @@ export const ProfileAndMenuModal: React.FC<{
         ))}
       </div>
 
-      {/* 左下角：圓形 ✕ 返回主畫面按鈕（對照圖五左下角） */}
+      {/* 左下角：圓形 ✕ 透明玻璃按鈕 */}
       <button
+        className="pikmin-glass-circle-btn pikmin-glass-close-fab"
         onClick={onClose}
-        style={{
-          position: 'fixed',
-          left: 16,
-          bottom: 'max(16px, env(safe-area-inset-bottom))',
-          width: 54,
-          height: 54,
-          borderRadius: '50%',
-          border: '2px solid rgba(255,255,255,0.78)',
-          background: 'radial-gradient(circle at 30% 30%, rgba(52,211,153,0.9), rgba(5,150,105,0.92))',
-          color: '#FFFFFF',
-          fontSize: 20,
-          fontWeight: 900,
-          cursor: 'pointer',
-          boxShadow: '0 6px 16px rgba(0,0,0,0.28)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
         title="關閉選單"
       >
-        ✕
+        <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+          <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+        </svg>
       </button>
     </div>
   );
@@ -1192,7 +1169,7 @@ export const ARCameraModal: React.FC<{
           zIndex: 5,
           padding: 'var(--top-safe-hud) 16px 0',
           display: 'flex',
-          justifyContent: 'space-between',
+          justifyContent: 'center',
           alignItems: 'center'
         }}
       >
@@ -1208,23 +1185,17 @@ export const ARCameraModal: React.FC<{
         >
           📷 地瓜球 AR 相機
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            border: '2px solid rgba(255,255,255,0.75)',
-            background: 'rgba(15,23,42,0.5)',
-            color: '#FFFFFF',
-            fontSize: 18,
-            fontWeight: 900,
-            cursor: 'pointer'
-          }}
-        >
-          ✕
-        </button>
       </div>
+
+      <button
+        className="pikmin-glass-circle-btn pikmin-glass-close-fab"
+        onClick={onClose}
+        title="返回主畫面"
+      >
+        <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+          <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+        </svg>
+      </button>
 
       {/* 前景可愛地瓜球小隊合影 */}
       <div

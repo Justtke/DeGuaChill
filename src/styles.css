@@ -30,6 +30,40 @@ html, body, #root {
   filter: sepia(0.34) hue-rotate(52deg) saturate(2.2) brightness(0.95) contrast(1.1);
 }
 
+/* 統一皮克敏風格透明立體光澤玻璃圓形按鈕（供主畫面、互動地圖、花園、油鍋、種花、各子頁面共用） */
+.pikmin-glass-circle-btn {
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  background: radial-gradient(
+    circle at 30% 24%,
+    rgba(255, 255, 255, 0.58) 0%,
+    rgba(134, 239, 172, 0.24) 34%,
+    rgba(21, 128, 61, 0.44) 72%,
+    rgba(5, 46, 22, 0.72) 100%
+  );
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.28),
+    inset 0 2.5px 6px rgba(255, 255, 255, 0.78),
+    inset 0 -4px 8px rgba(5, 46, 22, 0.52);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.pikmin-glass-close-fab {
+  position: fixed;
+  left: clamp(14px, 4vw, 18px);
+  bottom: max(2.1lvh, env(safe-area-inset-bottom) + 6px);
+  width: clamp(48px, 6.2lvh, 56px);
+  height: clamp(48px, 6.2lvh, 56px);
+  z-index: 1200;
+}
+
 /* 主畫面上方「今日真實位置與足跡概覽地圖」容器 */
 .pikmin-mini-footprint-map {
   background: #F7F8F5 !important;

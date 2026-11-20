@@ -745,25 +745,17 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
         }}
       >
         <button
+          className="pikmin-glass-circle-btn"
           onClick={onClose}
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: '50%',
-            border: '2px solid rgba(255,255,255,0.9)',
-            background: 'radial-gradient(circle at 30% 30%, #BCE3DE, #7AC3BD)',
-            color: '#FFFFFF',
-            fontSize: 20,
-            fontWeight: 900,
-            cursor: 'pointer',
-            boxShadow: '0 6px 16px rgba(15,23,42,0.16)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            width: 'clamp(48px, 6.2lvh, 56px)',
+            height: 'clamp(48px, 6.2lvh, 56px)'
           }}
-          title="關閉油鍋"
+          title="返回主畫面"
         >
-          ✕
+          <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+            <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+          </svg>
         </button>
 
         <button
