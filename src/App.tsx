@@ -650,7 +650,7 @@ export const App: React.FC = () => {
         ? '#5CAE50'
         : isGardenOpen || showPlantingDrawer
           ? '#4B9B36'
-          : '#2563EB';
+          : '#6EA5E2';
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
     document.body.style.background = color;
   }, [isPlanterOpen, isInteractiveMapOpen, isGardenOpen, showPlantingDrawer]);
@@ -1778,6 +1778,22 @@ export const App: React.FC = () => {
   const readySeedlingsCount = seedlings.filter((s) => s.isReady).length;
   const activeFryerCount = seedlings.filter((s) => s.slotIndex !== null).length;
   const squadCreatures = creatures.filter((c) => c.inSquad && c.busyState === 'free');
+  const carryingHelpers = useMemo(() => {
+    const activeOrDone = expeditions.filter(
+      (e) => (e.status === 'active' || e.status === 'completed') && e.assignedCreatureIds.length > 0
+    );
+    const seen = new Set<string>();
+    const list: { expedition: ExpeditionItem; creature: DeGuaCreature }[] = [];
+    for (const exp of activeOrDone) {
+      const helper = creatures.find((c) => exp.assignedCreatureIds.includes(c.id));
+      if (helper && !seen.has(helper.id)) {
+        seen.add(helper.id);
+        list.push({ expedition: exp, creature: helper });
+      }
+      if (list.length >= 3) break;
+    }
+    return list;
+  }, [expeditions, creatures]);
   const totalExpeditionItems = mushrooms.length + expeditions.length;
   const missionPct = Math.min(100, Math.round((mushroomsDestroyed / missionTarget) * 100));
 
@@ -1822,7 +1838,7 @@ export const App: React.FC = () => {
     <div
       className="pikmin-app-shell"
       style={{
-        background: 'linear-gradient(180deg, #2563EB 0%, #60A5FA 22%, #BAE6FD 46%, #6CC644 50%, #3B8927 100%)',
+        background: 'linear-gradient(180deg, #6EA5E2 0%, #86B6EB 20%, #B4D7F3 42%, #78C652 46%, #43932A 100%)',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
@@ -1830,13 +1846,13 @@ export const App: React.FC = () => {
         position: 'relative'
       }}
     >
-      {/* 下半部皮克敏風格立體百花草原背景（從任務卡高度延伸至最底部，告別素色綠底） */}
+      {/* 下半部皮克敏風格自然草原（從天空霧氣自然過渡至陽光綠地） */}
       <div
         style={{
           position: 'absolute',
           left: 0,
           right: 0,
-          top: '44%',
+          top: '41%',
           bottom: 0,
           pointerEvents: 'none',
           zIndex: 0
@@ -1860,19 +1876,19 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* ==================== 上半部固定卡片區（全部採用 lvh/clamp 比例縮放對齊皮克敏圖二＆圖四高度與字體粗細） ==================== */}
+      {/* ==================== 上半部固定卡片區（完全比照皮克敏圖二＆圖四：僅日期與任務標題粗體、加大LOGO與字體、適度邊距） ==================== */}
       <div
         style={{
-          padding: 'var(--top-safe-hud) clamp(10px, 3.2vw, 14px) 0',
+          padding: 'var(--top-safe-hud) clamp(13px, 3.8vw, 17px) 0',
           display: 'flex',
           flexDirection: 'column',
-          gap: 'clamp(5px, 0.72lvh, 8px)',
+          gap: 'clamp(8px, 1.12lvh, 11px)',
           zIndex: isProfileMenuOpen ? 45 : 10,
           position: 'relative'
         }}
       >
         {/* 【頂部三顆純白膠囊】：飾品一覽 ｜ 好友 ｜ 通知 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'clamp(6px, 2vw, 9px)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'clamp(7px, 2.3vw, 10px)' }}>
           <button
             onClick={() => {
               setIsProfileMenuOpen(false);
@@ -1882,21 +1898,25 @@ export const App: React.FC = () => {
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 999,
-              height: 'clamp(30px, 3.85lvh, 36px)',
-              padding: '0 6px',
+              height: 'clamp(33px, 4.15lvh, 39px)',
+              padding: '0 8px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 'clamp(4px, 1.4vw, 7px)',
-              fontSize: 'clamp(13px, 1.72lvh, 15px)',
-              fontWeight: 600,
+              gap: 'clamp(5px, 1.5vw, 7px)',
+              fontSize: 'clamp(13.5px, 1.78lvh, 15.5px)',
+              fontWeight: 400,
               color: '#374151',
               cursor: 'pointer',
-              boxShadow: '0 3px 10px rgba(0,0,0,0.1)',
+              boxShadow: '0 3px 10px rgba(0,0,0,0.09)',
               whiteSpace: 'nowrap'
             }}
           >
-            <span style={{ fontSize: 'clamp(15px, 2lvh, 17px)' }}>🎖️</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" style={{ width: 'clamp(19px, 2.45lvh, 22px)', height: 'clamp(19px, 2.45lvh, 22px)', flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="9.5" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="1.6" />
+              <circle cx="12" cy="12" r="6" fill="#EF4444" />
+              <circle cx="12" cy="12" r="2.6" fill="#FDE047" />
+            </svg>
             <span>飾品一覽</span>
           </button>
 
@@ -1909,21 +1929,26 @@ export const App: React.FC = () => {
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 999,
-              height: 'clamp(30px, 3.85lvh, 36px)',
-              padding: '0 6px',
+              height: 'clamp(33px, 4.15lvh, 39px)',
+              padding: '0 8px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 'clamp(4px, 1.4vw, 7px)',
-              fontSize: 'clamp(13px, 1.72lvh, 15px)',
-              fontWeight: 600,
+              gap: 'clamp(5px, 1.5vw, 7px)',
+              fontSize: 'clamp(13.5px, 1.78lvh, 15.5px)',
+              fontWeight: 400,
               color: '#374151',
               cursor: 'pointer',
-              boxShadow: '0 3px 10px rgba(0,0,0,0.1)',
+              boxShadow: '0 3px 10px rgba(0,0,0,0.09)',
               whiteSpace: 'nowrap'
             }}
           >
-            <span style={{ fontSize: 'clamp(15px, 2lvh, 17px)' }}>➿</span>
+            <svg width="20" height="20" viewBox="0 0 26 20" fill="none" style={{ width: 'clamp(20px, 2.55lvh, 23px)', height: 'clamp(16px, 2.1lvh, 19px)', flexShrink: 0 }}>
+              <circle cx="8" cy="10" r="6" stroke="#22C55E" strokeWidth="2.4" />
+              <circle cx="18" cy="10" r="6" stroke="#22C55E" strokeWidth="2.4" />
+              <circle cx="8" cy="9.5" r="1.5" fill="#22C55E" />
+              <circle cx="18" cy="9.5" r="1.5" fill="#22C55E" />
+            </svg>
             <span>好友</span>
           </button>
 
@@ -1936,43 +1961,45 @@ export const App: React.FC = () => {
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 999,
-              height: 'clamp(30px, 3.85lvh, 36px)',
-              padding: '0 6px',
+              height: 'clamp(33px, 4.15lvh, 39px)',
+              padding: '0 8px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 'clamp(4px, 1.4vw, 7px)',
-              fontSize: 'clamp(13px, 1.72lvh, 15px)',
-              fontWeight: 600,
+              gap: 'clamp(5px, 1.5vw, 7px)',
+              fontSize: 'clamp(13.5px, 1.78lvh, 15.5px)',
+              fontWeight: 400,
               color: '#374151',
               cursor: 'pointer',
-              boxShadow: '0 3px 10px rgba(0,0,0,0.1)',
+              boxShadow: '0 3px 10px rgba(0,0,0,0.09)',
               whiteSpace: 'nowrap'
             }}
           >
-            <span style={{ fontSize: 'clamp(15px, 2lvh, 17px)' }}>📢</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ width: 'clamp(19px, 2.45lvh, 22px)', height: 'clamp(19px, 2.45lvh, 22px)', flexShrink: 0 }}>
+              <path d="M4 10V14H7.5L14 18.5V5.5L7.5 10H4Z" fill="#FBBF24" />
+              <path d="M17 8.5C18.5 10 18.5 14 17 15.5" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" />
+            </svg>
             <span>通知</span>
           </button>
         </div>
 
-        {/* 【主畫面中央大白卡：比例對齊皮克敏，上地圖＋下日曆】 */}
+        {/* 【主畫面中央大白卡：白框留白與皮克敏等比，深灰粗體日期＋細緻字重】 */}
         <div
           style={{
             background: '#FFFFFF',
             borderRadius: 'clamp(18px, 2.3lvh, 22px)',
-            padding: 'clamp(4px, 0.55lvh, 6px)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.11)',
+            padding: 'clamp(6px, 0.8lvh, 9px) clamp(6px, 1.8vw, 8px) clamp(8px, 1.05lvh, 11px)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
             display: 'flex',
             flexDirection: 'column'
           }}
         >
-          {/* 足跡地圖區（以螢幕比例動態決定高度，跨機型皆切齊皮克敏圖卡底緣） */}
           <div
             style={{
               position: 'relative',
               width: '100%',
-              height: 'clamp(148px, 20.6lvh, 196px)',
-              borderRadius: 'clamp(14px, 1.85lvh, 18px)',
+              height: 'clamp(150px, 21.0lvh, 198px)',
+              borderRadius: 'clamp(13px, 1.75lvh, 17px)',
               overflow: 'hidden'
             }}
           >
@@ -1999,35 +2026,35 @@ export const App: React.FC = () => {
               }}
               style={{
                 position: 'absolute',
-                top: 'clamp(6px, 0.9lvh, 10px)',
+                top: 'clamp(7px, 1lvh, 11px)',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 zIndex: 410,
                 background: 'rgba(255, 255, 255, 0.96)',
-                border: '1px solid #E2E8F0',
+                border: '1px solid #E5E7EB',
                 borderRadius: 999,
-                padding: 'clamp(4px, 0.6lvh, 6px) clamp(14px, 4vw, 18px)',
+                padding: 'clamp(5px, 0.65lvh, 7px) clamp(15px, 4.2vw, 20px)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 7,
-                fontSize: 'clamp(12.5px, 1.65lvh, 14.5px)',
-                fontWeight: 600,
+                gap: 8,
+                fontSize: 'clamp(13px, 1.7lvh, 15px)',
+                fontWeight: 400,
                 color: '#374151',
                 cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                 whiteSpace: 'nowrap'
               }}
             >
-              <span style={{ fontSize: 'clamp(15px, 2lvh, 18px)' }}>🍄</span>
+              <span style={{ fontSize: 'clamp(16px, 2.1lvh, 19px)' }}>🍄</span>
               <span>你有 {totalExpeditionItems} 項探險！</span>
-              <span style={{ color: '#94A3B8', fontWeight: 500 }}>&gt;</span>
+              <span style={{ color: '#9CA3AF' }}>&gt;</span>
             </button>
 
             {/* 地圖正下方中央：數字正對中線置中＋左下小花綴飾不推移數字！ */}
             <div
               style={{
                 position: 'absolute',
-                bottom: 'clamp(5px, 0.7lvh, 8px)',
+                bottom: 'clamp(6px, 0.8lvh, 9px)',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 zIndex: 405,
@@ -2089,24 +2116,24 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* 同一張大白卡下半部：每日紀錄日曆（依所在時區動態算出本週一～日，字體比例對齊皮克敏！） */}
+          {/* 同一張大白卡下半部：深灰粗體日期＋細字週數與日期（完全對照皮克敏圖二） */}
           <div
             onClick={() => {
               setIsProfileMenuOpen(false);
               setIsLifelogModalOpen(true);
             }}
             style={{
-              padding: 'clamp(6px, 0.85lvh, 10px) 6px clamp(4px, 0.55lvh, 7px)',
+              padding: 'clamp(8px, 1.05lvh, 12px) 8px 0',
               cursor: 'pointer'
             }}
           >
             <div
               style={{
                 textAlign: 'center',
-                fontSize: 'clamp(15px, 1.98lvh, 17.5px)',
-                fontWeight: 600,
-                color: '#374151',
-                marginBottom: 'clamp(4px, 0.65lvh, 8px)'
+                fontSize: 'clamp(16px, 2.08lvh, 18.5px)',
+                fontWeight: 700,
+                color: '#4B5563',
+                marginBottom: 'clamp(6px, 0.8lvh, 10px)'
               }}
             >
               {todayDateStr}
@@ -2115,20 +2142,20 @@ export const App: React.FC = () => {
               {weekDays.map((wd) => {
                 const mood = wd.isPastOrToday && !wd.isToday ? dailyMoods[wd.slotKey] : undefined;
                 return (
-                  <div key={wd.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'clamp(2px, 0.4lvh, 4px)' }}>
-                    <span style={{ fontSize: 'clamp(11px, 1.38lvh, 12.5px)', fontWeight: 500, color: '#6B7280' }}>{wd.label}</span>
+                  <div key={wd.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'clamp(3px, 0.45lvh, 5px)' }}>
+                    <span style={{ fontSize: 'clamp(11.5px, 1.45lvh, 13px)', fontWeight: 400, color: '#6B7280' }}>{wd.label}</span>
                     {mood ? (
                       <div
                         style={{
-                          width: 'clamp(26px, 3.45lvh, 32px)',
-                          height: 'clamp(26px, 3.45lvh, 32px)',
+                          width: 'clamp(28px, 3.6lvh, 33px)',
+                          height: 'clamp(28px, 3.6lvh, 33px)',
                           borderRadius: '50%',
                           background: '#FEF08A',
                           border: '1.5px solid #F59E0B',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: 'clamp(15px, 1.9lvh, 17px)'
+                          fontSize: 'clamp(15px, 1.95lvh, 18px)'
                         }}
                       >
                         {mood}
@@ -2136,16 +2163,16 @@ export const App: React.FC = () => {
                     ) : (
                       <div
                         style={{
-                          width: 'clamp(26px, 3.45lvh, 32px)',
-                          height: 'clamp(26px, 3.45lvh, 32px)',
+                          width: 'clamp(28px, 3.6lvh, 33px)',
+                          height: 'clamp(28px, 3.6lvh, 33px)',
                           borderRadius: '50%',
                           border: wd.isToday ? '1.8px solid #5EC28A' : '1px solid transparent',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: 'clamp(14.5px, 1.9lvh, 17px)',
-                          fontWeight: 600,
-                          color: wd.isToday ? '#16A34A' : '#93C5FD'
+                          fontSize: 'clamp(15.5px, 2.02lvh, 18px)',
+                          fontWeight: wd.isToday ? 600 : 500,
+                          color: wd.isToday ? '#15803D' : '#7E90A8'
                         }}
                       >
                         {wd.dayNum}
@@ -2158,7 +2185,7 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* 【進行中的任務卡片（高度與文字粗細比照圖二）】 */}
+        {/* 【進行中的任務卡片（字與邊框保留呼吸感、標題為粗體、副標為常規字重）】 */}
         <div
           onClick={() => {
             setIsProfileMenuOpen(false);
@@ -2167,8 +2194,8 @@ export const App: React.FC = () => {
           style={{
             background: '#FFFFFF',
             borderRadius: 'clamp(14px, 1.9lvh, 18px)',
-            padding: '0 clamp(12px, 3.5vw, 16px)',
-            height: 'clamp(54px, 7.0lvh, 66px)',
+            padding: 'clamp(8px, 1.05lvh, 11px) clamp(14px, 4.2vw, 18px)',
+            height: 'clamp(58px, 7.5lvh, 70px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -2180,10 +2207,10 @@ export const App: React.FC = () => {
           <div style={{ flex: 1 }}>
             <div
               style={{
-                fontSize: 'clamp(14px, 1.85lvh, 16.5px)',
-                fontWeight: 600,
+                fontSize: 'clamp(15px, 1.98lvh, 17.5px)',
+                fontWeight: 700,
                 color: '#374151',
-                marginBottom: 'clamp(4px, 0.6lvh, 7px)'
+                marginBottom: 'clamp(5px, 0.65lvh, 7px)'
               }}
             >
               摧毀 {missionTarget} 朵蘑菇
@@ -2200,8 +2227,8 @@ export const App: React.FC = () => {
             </div>
             <div
               style={{
-                fontSize: 'clamp(11.5px, 1.48lvh, 13px)',
-                fontWeight: 500,
+                fontSize: 'clamp(12px, 1.55lvh, 14px)',
+                fontWeight: 400,
                 color: mushroomsDestroyed >= missionTarget ? '#16A34A' : '#6B7280',
                 marginTop: 'clamp(3px, 0.45lvh, 5px)'
               }}
@@ -2220,13 +2247,13 @@ export const App: React.FC = () => {
               flowerColor="white"
               showDecor={true}
               isBouncing={false}
-              size={40}
+              size={42}
             />
           </div>
         </div>
 
-        {/* 【個人資訊 (2吋照＋六角分色Lv徽章＋痞諾丘) ＆ 商店 (未領免費禮斜角綠袋 / 已領純白底)】 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'clamp(8px, 2.4vw, 10px)' }}>
+        {/* 【個人資訊 (2吋照＋六角分色Lv徽章＋痞諾丘) ＆ 商店（細字重放大、粉彩包包圖示）】 */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'clamp(8px, 2.5vw, 11px)' }}>
           <button
             onClick={() => {
               if (isProfileMenuOpen) {
@@ -2240,8 +2267,8 @@ export const App: React.FC = () => {
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 'clamp(13px, 1.75lvh, 16px)',
-              padding: '0 clamp(10px, 2.8vw, 12px)',
-              height: 'clamp(44px, 5.5lvh, 52px)',
+              padding: '0 clamp(12px, 3.5vw, 16px)',
+              height: 'clamp(46px, 5.85lvh, 54px)',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
@@ -2249,19 +2276,19 @@ export const App: React.FC = () => {
               boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
             }}
           >
-            <PlayerPortraitAvatar size={36} />
+            <PlayerPortraitAvatar size={38} />
             <div style={{ marginLeft: -12, marginTop: 8, zIndex: 2 }}>
               <PlayerLevelHexBadge level={playerLevel} />
             </div>
             <span
               style={{
-                fontSize: 'clamp(15px, 2.0lvh, 17.5px)',
-                fontWeight: 600,
+                fontSize: 'clamp(16px, 2.1lvh, 18.5px)',
+                fontWeight: 400,
                 color: '#374151',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
-                marginLeft: 2
+                marginLeft: 3
               }}
             >
               {playerName}
@@ -2278,20 +2305,25 @@ export const App: React.FC = () => {
               background: '#FFFFFF',
               border: 'none',
               borderRadius: 'clamp(13px, 1.75lvh, 16px)',
-              padding: '0 clamp(10px, 3vw, 14px)',
-              height: 'clamp(44px, 5.5lvh, 52px)',
+              padding: '0 clamp(12px, 3.5vw, 16px)',
+              height: 'clamp(46px, 5.85lvh, 54px)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: canClaimDailyGift ? 'flex-start' : 'center',
-              gap: 8,
+              gap: 'clamp(8px, 2.4vw, 10px)',
               cursor: 'pointer',
               overflow: 'hidden',
               boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
             }}
             title={canClaimDailyGift ? '點此領取今日免費禮物！' : '商店'}
           >
-            <span style={{ fontSize: 'clamp(17px, 2.2lvh, 19px)', zIndex: 2 }}>🛍️</span>
-            <span style={{ fontSize: 'clamp(15px, 2.0lvh, 17.5px)', fontWeight: 600, color: '#374151', zIndex: 2 }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ width: 'clamp(22px, 2.85lvh, 26px)', height: 'clamp(22px, 2.85lvh, 26px)', zIndex: 2, flexShrink: 0 }}>
+              <path d="M8.5 9V7.5C8.5 5.567 10.067 4 12 4C13.933 4 15.5 5.567 15.5 7.5V9" stroke="#FB7185" strokeWidth="2" strokeLinecap="round" />
+              <path d="M5.5 9H18.5L19.5 19.5C19.6 20.3 19 21 18.2 21H5.8C5 21 4.4 20.3 4.5 19.5L5.5 9Z" fill="#FB7185" />
+              <circle cx="9.5" cy="12" r="1" fill="#FFFFFF" />
+              <circle cx="14.5" cy="12" r="1" fill="#FFFFFF" />
+            </svg>
+            <span style={{ fontSize: 'clamp(16px, 2.1lvh, 18.5px)', fontWeight: 400, color: '#374151', zIndex: 2 }}>
               商店
             </span>
 
@@ -2331,24 +2363,91 @@ export const App: React.FC = () => {
           </button>
         </div>
 
-        {/* 圖四：按了左下角漢堡選單後，直接在上方卡片正下方滑出 7 顆純白雙欄按鈕（保留上方卡＋痞諾丘＋商店原位，絕不貼底！） */}
+        {/* 圖四：選單展開 7 顆純白按鈕（細字重 400、放大專屬粉彩 SVG LOGO、高度對齊皮克敏） */}
         {isProfileMenuOpen && (
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
-              gap: 'clamp(6px, 0.85lvh, 9px) clamp(8px, 2.4vw, 10px)',
+              gap: 'clamp(8px, 1.05lvh, 11px) clamp(8px, 2.5vw, 11px)',
               marginTop: 1
             }}
           >
             {[
-              { key: 'garden', label: '地瓜球', icon: '🍠' },
-              { key: 'planter', label: '瓜糰', icon: '🍯' },
-              { key: 'postcards', label: '明信片', icon: '🖼️' },
-              { key: 'ar', label: 'AR相機', icon: '📷' },
-              { key: 'activity', label: '參加活動', icon: '🏃' },
-              { key: 'guide', label: '遊玩指南', icon: '📖' },
-              { key: 'settings', label: '設定', icon: '⚙️' }
+              {
+                key: 'garden',
+                label: '地瓜球',
+                svg: (
+                  <svg viewBox="0 0 28 28" width="100%" height="100%">
+                    <path d="M14 5C12 7.5 11.5 10.5 13 12C15 10 15.5 7 14 5Z" fill="#EF4444" />
+                    <path d="M14 11C10 11 8 15 10 19.5C11.5 22.5 16.5 22.5 18 19.5C20 15 18 11 14 11Z" fill="#FB7185" />
+                    <circle cx="14" cy="10.5" r="2.2" fill="#DC2626" />
+                  </svg>
+                )
+              },
+              {
+                key: 'planter',
+                label: '瓜糰',
+                svg: (
+                  <svg viewBox="0 0 28 28" width="100%" height="100%">
+                    <ellipse cx="14" cy="17.5" rx="6.5" ry="7.2" fill="#34D399" />
+                    <path d="M14 10.5C11 7 12.5 4 15.5 5.5C17 6.5 15.5 9 14 10.5Z" fill="#10B981" />
+                  </svg>
+                )
+              },
+              {
+                key: 'postcards',
+                label: '明信片',
+                svg: (
+                  <svg viewBox="0 0 28 28" width="100%" height="100%" fill="none">
+                    <rect x="3.5" y="6.5" width="21" height="15" rx="2.5" stroke="#A5B4FC" strokeWidth="2.2" />
+                    <line x1="12.5" y1="6.5" x2="12.5" y2="21.5" stroke="#C7D2FE" strokeWidth="1.6" />
+                    <rect x="16" y="9.5" width="5" height="5.5" rx="1" fill="#E0E7FF" />
+                  </svg>
+                )
+              },
+              {
+                key: 'ar',
+                label: 'AR相機',
+                svg: (
+                  <svg viewBox="0 0 28 28" width="100%" height="100%" fill="none">
+                    <path d="M5 9V6.5C5 5.7 5.7 5 6.5 5H9M19 5H21.5C22.3 5 23 5.7 23 6.5V9M23 19V21.5C23 22.3 22.3 23 21.5 23H19M9 23H6.5C5.7 23 5 22.3 5 21.5V19" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" />
+                    <text x="14" y="17.5" textAnchor="middle" fill="#D97706" fontSize="9.5" fontWeight="700" fontFamily="sans-serif">AR</text>
+                  </svg>
+                )
+              },
+              {
+                key: 'activity',
+                label: '參加活動',
+                svg: (
+                  <svg viewBox="0 0 28 28" width="100%" height="100%" fill="none">
+                    <circle cx="13" cy="7.5" r="2.6" fill="#F4A29E" />
+                    <path d="M12.5 11L9 17M12.5 11L16.5 16L14.5 22.5M12.5 15L9.5 22.5" stroke="#F4A29E" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M19 7V11.5M19 7L22 6V10.5" stroke="#FB7185" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                )
+              },
+              {
+                key: 'guide',
+                label: '遊玩指南',
+                svg: (
+                  <svg viewBox="0 0 28 28" width="100%" height="100%" fill="none">
+                    <rect x="6" y="4.5" width="16" height="19" rx="2.5" stroke="#A855F7" strokeWidth="2" />
+                    <line x1="9.5" y1="4.5" x2="9.5" y2="23.5" stroke="#C084FC" strokeWidth="1.6" />
+                    <text x="15.5" y="17.5" textAnchor="middle" fill="#9333EA" fontSize="11.5" fontWeight="700">?</text>
+                  </svg>
+                )
+              },
+              {
+                key: 'settings',
+                label: '設定',
+                svg: (
+                  <svg viewBox="0 0 28 28" width="100%" height="100%">
+                    <circle cx="14" cy="14" r="6.5" fill="#60A5FA" stroke="#3B82F6" strokeWidth="2.4" strokeDasharray="3.2 2.2" />
+                    <circle cx="14" cy="14" r="3" fill="#FFFFFF" />
+                  </svg>
+                )
+              }
             ].map((btn) => (
               <button
                 key={btn.key}
@@ -2366,17 +2465,19 @@ export const App: React.FC = () => {
                   background: '#FFFFFF',
                   border: 'none',
                   borderRadius: 'clamp(13px, 1.75lvh, 16px)',
-                  padding: '0 clamp(12px, 3.4vw, 15px)',
-                  height: 'clamp(42px, 5.4lvh, 50px)',
+                  padding: '0 clamp(14px, 3.8vw, 17px)',
+                  height: 'clamp(45px, 5.75lvh, 53px)',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 'clamp(9px, 2.8vw, 12px)',
+                  gap: 'clamp(10px, 3vw, 14px)',
                   cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.11)'
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                 }}
               >
-                <span style={{ fontSize: 'clamp(19px, 2.5lvh, 23px)' }}>{btn.icon}</span>
-                <span style={{ fontSize: 'clamp(14.5px, 1.95lvh, 17px)', fontWeight: 600, color: '#374151' }}>{btn.label}</span>
+                <span style={{ width: 'clamp(24px, 3.15lvh, 28px)', height: 'clamp(24px, 3.15lvh, 28px)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {btn.svg}
+                </span>
+                <span style={{ fontSize: 'clamp(16px, 2.08lvh, 18.5px)', fontWeight: 400, color: '#374151' }}>{btn.label}</span>
               </button>
             ))}
           </div>
@@ -2423,39 +2524,72 @@ export const App: React.FC = () => {
           zIndex: 5
         }}
       >
-        {/* 中央走路小人與腳邊一起散步的迷你地瓜球小隊 */}
+        {/* 中央走路小人與腳邊一起散步的真實狀態地瓜球小隊（頭頂葉/苞/花/禿與禮物水果搬運員皆依即時狀態渲染） */}
         <div
-          onClick={() => setIsGardenOpen(true)}
           style={{
             position: 'relative',
             zIndex: 5,
-            width: 240,
-            height: 126,
+            width: 260,
+            height: 138,
             display: 'flex',
             alignItems: 'flex-end',
             justifyContent: 'center',
-            cursor: 'pointer',
-            marginBottom: 18
+            marginBottom: 14
           }}
         >
-          {/* 後排圍在腳邊後方的迷你地瓜球 */}
+          {/* 搬運禮物 / 水果 / 瓜糰回來的小幫手（依據進行中或待領取探險實際顯示） */}
+          {carryingHelpers.length > 0 && (
+            <div
+              onClick={() => setIsExpeditionsOpen(true)}
+              style={{
+                position: 'absolute',
+                left: 6,
+                bottom: 8,
+                display: 'flex',
+                alignItems: 'flex-end',
+                gap: 4,
+                zIndex: 8,
+                cursor: 'pointer'
+              }}
+              title="查看搬運禮物與水果回來的地瓜球！"
+            >
+              {carryingHelpers.map(({ expedition: exp, creature: c }) => (
+                <DeGuaCharacter
+                  key={`carry_${exp.id}`}
+                  variety={c.variety}
+                  decor={c.decor}
+                  leafStage={c.leafStage}
+                  flowerColor={c.flowerColor}
+                  showDecor={c.hasDecor}
+                  size={40}
+                  isBouncing={true}
+                  carryingKind={exp.kind}
+                  carryingEmoji={exp.fruitEmoji}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* 後排圍在腳邊後方的迷你地瓜球（實時葉子／花苞／花色／禿掉狀態） */}
           <div
+            onClick={() => setIsGardenOpen(true)}
             style={{
               position: 'absolute',
-              bottom: 16,
+              bottom: 18,
               left: '50%',
               transform: 'translateX(-50%)',
               display: 'flex',
               alignItems: 'flex-end',
-              gap: 10,
-              zIndex: 2
+              gap: 12,
+              zIndex: 2,
+              cursor: 'pointer'
             }}
           >
             {squadCreatures.slice(0, 4).map((c, idx) => (
               <div
                 key={c.id}
                 style={{
-                  transform: `translate(${idx < 2 ? -10 : 10}px, ${idx === 1 || idx === 2 ? -6 : 0}px)`
+                  transform: `translate(${idx < 2 ? -12 : 12}px, ${idx === 1 || idx === 2 ? -6 : 0}px)`
                 }}
               >
                 <DeGuaCharacter
@@ -2464,7 +2598,7 @@ export const App: React.FC = () => {
                   leafStage={c.leafStage}
                   flowerColor={c.flowerColor}
                   showDecor={c.hasDecor}
-                  size={31}
+                  size={36}
                   isBouncing={true}
                 />
               </div>
@@ -2472,8 +2606,8 @@ export const App: React.FC = () => {
           </div>
 
           {/* 正中央邁步散步玩家角色 */}
-          <div style={{ position: 'relative', zIndex: 5, marginBottom: 4 }}>
-            <WalkingPlayerAvatar height={94} isWalking={true} />
+          <div onClick={() => setIsGardenOpen(true)} style={{ position: 'relative', zIndex: 5, marginBottom: 4, cursor: 'pointer' }}>
+            <WalkingPlayerAvatar height={98} isWalking={true} />
           </div>
 
           {/* 貼緊在左右鞋子旁向前走的小隊員 */}
@@ -2483,7 +2617,7 @@ export const App: React.FC = () => {
               bottom: 0,
               left: '50%',
               transform: 'translateX(-50%)',
-              width: 170,
+              width: 185,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'flex-end',
@@ -2491,7 +2625,7 @@ export const App: React.FC = () => {
               pointerEvents: 'none'
             }}
           >
-            <div style={{ display: 'flex', gap: 2 }}>
+            <div style={{ display: 'flex', gap: 3 }}>
               {squadCreatures.slice(4, 6).map((c) => (
                 <DeGuaCharacter
                   key={c.id}
@@ -2500,12 +2634,12 @@ export const App: React.FC = () => {
                   leafStage={c.leafStage}
                   flowerColor={c.flowerColor}
                   showDecor={c.hasDecor}
-                  size={34}
+                  size={38}
                   isBouncing={true}
                 />
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 2 }}>
+            <div style={{ display: 'flex', gap: 3 }}>
               {squadCreatures.slice(6, 8).map((c) => (
                 <DeGuaCharacter
                   key={c.id}
@@ -2514,7 +2648,7 @@ export const App: React.FC = () => {
                   leafStage={c.leafStage}
                   flowerColor={c.flowerColor}
                   showDecor={c.hasDecor}
-                  size={34}
+                  size={38}
                   isBouncing={true}
                 />
               ))}

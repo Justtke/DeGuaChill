@@ -5,7 +5,7 @@
 
 :root {
   /* Native iOS matches Pikmin tight safe-area spacing; Safari Standalone PWA overrides via App.tsx if needed */
-  --top-safe-hud: calc(env(safe-area-inset-top, 0px) + 0.35lvh);
+  --top-safe-hud: calc(env(safe-area-inset-top, 0px) + 0.55lvh);
 }
 
 html, body, #root {
@@ -15,7 +15,7 @@ html, body, #root {
   min-height: 100vh;
   min-height: 100lvh;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "PingFang TC", "Microsoft JhengHei", sans-serif;
-  background: #2563EB;
+  background: #6EA5E2;
   color: #1E293B;
 }
 

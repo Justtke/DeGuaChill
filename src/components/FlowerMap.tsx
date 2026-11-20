@@ -84,9 +84,124 @@ function drawCanvasGroundFlower(
   ctx.fill();
 }
 
-// 記憶體圖磚快取：將已解碼分類完成的 256x256 街廓矩陣快取於記憶體中，切換視角或重開地圖時 0ms 瞬間渲染，絕不重複請求或漏塊！
-const cachedFinalTileTypes = new Map<string, Uint8Array>();
+interface InteractiveTileFields {
+  roadBlur: Uint8Array;
+  waterBlur: Uint8Array;
+  parkMask: Uint8Array;
+}
+
+// 記憶體圖磚快取：將已解碼平滑化的 256x256 街廓密度場快取於記憶體中，切換視角或重開地圖時 0ms 瞬間渲染！
+const cachedInteractiveFields = new Map<string, InteractiveTileFields>();
 const cachedMiniTileImages = new Map<string, ImageData>();
+
+function smoothBox3x3(src: Uint8Array): Uint8Array {
+  const dst = new Uint8Array(65536);
+  for (let y = 0; y < 256; y++) {
+    const ym = y > 0 ? y - 1 : 0;
+    const yp = y < 255 ? y + 1 : 255;
+    const r0 = ym << 8;
+    const r1 = y << 8;
+    const r2 = yp << 8;
+    for (let x = 0; x < 256; x++) {
+      const xm = x > 0 ? x - 1 : 0;
+      const xp = x < 255 ? x + 1 : 255;
+      const sum =
+        src[r0 + xm] + src[r0 + x] + src[r0 + xp] +
+        src[r1 + xm] + src[r1 + x] + src[r1 + xp] +
+        src[r2 + xm] + src[r2 + x] + src[r2 + xp];
+      dst[r1 + x] = (sum / 9) | 0;
+    }
+  }
+  return dst;
+}
+
+function extractSmoothInteractiveFields(srcData: Uint8ClampedArray): InteractiveTileFields {
+  const roadProb = new Uint8Array(65536);
+  const waterProb = new Uint8Array(65536);
+  const parkMask = new Uint8Array(65536);
+  const isText = new Uint8Array(65536);
+
+  for (let i = 0; i < 65536; i++) {
+    const p = i << 2;
+    const r = srcData[p];
+    const g = srcData[p + 1];
+    const b = srcData[p + 2];
+    const minC = r < g ? (r < b ? r : b) : g < b ? g : b;
+    const maxC = r > g ? (r > b ? r : b) : g > b ? g : b;
+    const sat = maxC - minC;
+
+    // 1. 水域
+    if (b > r + 10 && b > 160 && g > 148) {
+      waterProb[i] = Math.min(255, (((b - r - 8) / 28) * 255) | 0);
+      continue;
+    }
+
+    // 2. 暖色系主幹道 / 高架 / 省道 / 黃白次幹道
+    if (r >= 210 && g >= 120 && r - b >= 14) {
+      roadProb[i] = Math.min(255, (((r - b - 10) / 26) * 255) | 0);
+      continue;
+    }
+
+    // 3. 公園綠地
+    if (g > r + 6 && g > b + 6 && g >= 145) {
+      parkMask[i] = 1;
+      continue;
+    }
+
+    // 4. 文字筆畫 / POI 圖示（稍後依半徑 5px 鄰域精準修補，不開方洞！）
+    if (maxC < 175 && sat < 36) {
+      isText[i] = 1;
+      continue;
+    }
+
+    // 5. 純白柏油道路（排除建築灰棕 #d9d0c9 與一般土地 #f2efe9）
+    if (minC >= 249 && maxC >= 251) {
+      roadProb[i] = Math.min(255, (((minC - 247) / 7) * 255) | 0);
+    }
+  }
+
+  // 僅針對被偵測為文字／線條的像素做半徑 5px 鄰域無縫修補
+  const healedRoad = new Uint8Array(roadProb);
+  const healedWater = new Uint8Array(waterProb);
+  const ringOffsets = [
+    [-5, 0], [5, 0], [0, -5], [0, 5],
+    [-4, -4], [4, -4], [-4, 4], [4, 4]
+  ];
+
+  for (let y = 0; y < 256; y++) {
+    const yOff = y << 8;
+    for (let x = 0; x < 256; x++) {
+      const idx = yOff + x;
+      if (!isText[idx]) continue;
+      let rSum = 0;
+      let wSum = 0;
+      let valid = 0;
+      for (let k = 0; k < 8; k++) {
+        const sx = x + ringOffsets[k][0];
+        const sy = y + ringOffsets[k][1];
+        if (sx >= 0 && sx < 256 && sy >= 0 && sy < 256) {
+          const sIdx = (sy << 8) + sx;
+          if (!isText[sIdx]) {
+            rSum += roadProb[sIdx];
+            wSum += waterProb[sIdx];
+            valid++;
+          }
+        }
+      }
+      if (valid > 0) {
+        const avgW = wSum / valid;
+        const avgR = rSum / valid;
+        if (avgW >= 110) healedWater[idx] = 255;
+        else if (avgR >= 125) healedRoad[idx] = 255;
+      }
+    }
+  }
+
+  // 兩道 3x3 平滑濾波（消除建築物白邊與孤立雜訊點、柔化道路曲線抗鋸齒）
+  const roadBlur = smoothBox3x3(smoothBox3x3(healedRoad));
+  const waterBlur = smoothBox3x3(smoothBox3x3(healedWater));
+  return { roadBlur, waterBlur, parkMask };
+}
 
 /**
  * 首頁小地圖專用平滑向量風著色器（保留抗鋸齒弧線與清晰行政區地名，絕不產生破碎鋸齒或建築碎塊）
@@ -166,79 +281,51 @@ const TILE_CDN_MIRRORS = [
   (z: number, x: number, y: number) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
 ];
 
-function paintFinalTypeToCanvas(
+function paintSmoothInteractiveTileToCanvas(
   ctx: CanvasRenderingContext2D,
-  finalType: Uint8Array,
+  fields: InteractiveTileFields,
   coords: L.Coords,
-  isMini: boolean,
   isSurround: boolean
 ) {
+  const { roadBlur, waterBlur, parkMask } = fields;
   const outImg = ctx.createImageData(256, 256);
   const dst = outImg.data;
 
-  for (let y = 0; y < 256; y++) {
-    const yOff = y << 8;
-    for (let x = 0; x < 256; x++) {
-      const idx = yOff + x;
-      const p = idx << 2;
-      const t = finalType[idx];
+  for (let i = 0; i < 65536; i++) {
+    const p = i << 2;
+    const wRaw = waterBlur[i];
+    if (wRaw >= 88) {
+      const wT = Math.min(1, (wRaw - 88) / 96);
+      const baseG_R = parkMask[i] ? 86 : 102;
+      const baseG_G = parkMask[i] ? 174 : 185;
+      const baseG_B = parkMask[i] ? 78 : 89;
+      dst[p] = Math.round(baseG_R * (1 - wT) + 125 * wT);
+      dst[p + 1] = Math.round(baseG_G * (1 - wT) + 211 * wT);
+      dst[p + 2] = Math.round(baseG_B * (1 - wT) + 252 * wT);
+      dst[p + 3] = 255;
+      continue;
+    }
 
-      if (t === 2) {
-        // 水域
-        dst[p] = isMini ? 168 : 125;
-        dst[p + 1] = isMini ? 216 : 211;
-        dst[p + 2] = isMini ? 250 : 252;
-        dst[p + 3] = 255;
-      } else if (t === 1) {
-        // 道路
-        const isEdge =
-          (x > 0 && finalType[idx - 1] !== 1) ||
-          (x < 255 && finalType[idx + 1] !== 1) ||
-          (y > 0 && finalType[idx - 256] !== 1) ||
-          (y < 255 && finalType[idx + 256] !== 1);
-        if (isMini) {
-          dst[p] = isEdge ? 236 : 252;
-          dst[p + 1] = isEdge ? 218 : 239;
-          dst[p + 2] = isEdge ? 162 : 196;
-          dst[p + 3] = 255;
-        } else if (isEdge) {
-          dst[p] = 200;
-          dst[p + 1] = 196;
-          dst[p + 2] = 158;
-          dst[p + 3] = 255;
-        } else {
-          dst[p] = 244;
-          dst[p + 1] = 240;
-          dst[p + 2] = 214;
-          dst[p + 3] = 255;
-        }
-      } else {
-        if (isMini) {
-          // 皮克敏首頁小地圖：清爽淡雅奶白底色，凸顯綠色迷霧與腳印！
-          dst[p] = 247;
-          dst[p + 1] = 247;
-          dst[p + 2] = 242;
-          dst[p + 3] = 255;
-        } else {
-          // 乾淨平整的皮克敏翠綠街廓 (#60B354)，緊貼道路內側繪製平滑亮綠街廓輪廓線 (#82CC78)
-          const nearRoad =
-            (x > 1 && finalType[idx - 2] === 1) ||
-            (x < 254 && finalType[idx + 2] === 1) ||
-            (y > 1 && finalType[idx - 512] === 1) ||
-            (y < 254 && finalType[idx + 512] === 1);
-          if (nearRoad) {
-            dst[p] = 130;
-            dst[p + 1] = 204;
-            dst[p + 2] = 120;
-            dst[p + 3] = 255;
-          } else {
-            dst[p] = 96;
-            dst[p + 1] = 179;
-            dst[p + 2] = 84;
-            dst[p + 3] = 255;
-          }
-        }
-      }
+    const rRaw = roadBlur[i];
+    if (rRaw <= 76) {
+      // 平整完整的皮克敏翠綠草地街廓（過濾所有孤立雜訊點）
+      dst[p] = parkMask[i] ? 86 : 102;
+      dst[p + 1] = parkMask[i] ? 174 : 185;
+      dst[p + 2] = parkMask[i] ? 78 : 89;
+      dst[p + 3] = 255;
+    } else if (rRaw < 138) {
+      // 柔和路緣過度帶（草地亮緣 -> 暖卡其路緣 -> 奶油道路）
+      const edgeT = (rRaw - 76) / 62;
+      dst[p] = Math.round(126 * (1 - edgeT) + 216 * edgeT);
+      dst[p + 1] = Math.round(198 * (1 - edgeT) + 212 * edgeT);
+      dst[p + 2] = Math.round(112 * (1 - edgeT) + 178 * edgeT);
+      dst[p + 3] = 255;
+    } else {
+      const roadT = Math.min(1, (rRaw - 138) / 48);
+      dst[p] = Math.round(216 * (1 - roadT) + 245 * roadT);
+      dst[p + 1] = Math.round(212 * (1 - roadT) + 241 * roadT);
+      dst[p + 2] = Math.round(178 * (1 - roadT) + 216 * roadT);
+      dst[p + 3] = 255;
     }
   }
 
@@ -257,19 +344,19 @@ function paintFinalTypeToCanvas(
     const palA = palettes[tileHash % palettes.length];
     const palB = palettes[(tileHash >>> 4) % palettes.length];
 
-    for (let f = 0; f < 85; f++) {
+    for (let f = 0; f < 72; f++) {
       const fh = tileSeedHash(coords.x * 31 + f, coords.y * 37 + f, f + 99);
-      const fx = 8 + (fh % 240);
-      const fy = 8 + ((fh >>> 8) % 240);
-      const t = finalType[(fy << 8) + fx];
-      if (t === 1 || t === 2) continue;
+      const fx = 10 + (fh % 236);
+      const fy = 10 + ((fh >>> 8) % 236);
+      const idx = (fy << 8) + fx;
+      if (roadBlur[idx] > 32 || waterBlur[idx] > 32) continue;
 
       const pal = (fh & 3) === 0 ? palB : palA;
-      const radius = 3.5 + (fh % 3) * 0.7;
+      const radius = 3.2 + (fh % 3) * 0.65;
 
-      ctx.fillStyle = '#3E8E34';
+      ctx.fillStyle = '#429639';
       ctx.beginPath();
-      ctx.arc(fx + 1, fy + 1.2, radius * 0.9, 0, Math.PI * 2);
+      ctx.arc(fx + 1, fy + 1.2, radius * 0.88, 0, Math.PI * 2);
       ctx.fill();
 
       drawCanvasGroundFlower(ctx, fx, fy, radius, pal.petal, pal.center);
@@ -314,14 +401,13 @@ export function createPikminOsmShaderTileLayer(
           return tile;
         }
       } else {
-        const cached = cachedFinalTileTypes.get(cacheKey);
+        const cached = cachedInteractiveFields.get(cacheKey);
         if (cached) {
           const { isMini, cameraPerspective } = getState();
-          paintFinalTypeToCanvas(
+          paintSmoothInteractiveTileToCanvas(
             ctx,
             cached,
             coords,
-            isMini,
             !isMini && cameraPerspective === 'surround'
           );
           window.setTimeout(() => done(undefined, tile), 0);
@@ -361,142 +447,13 @@ export function createPikminOsmShaderTileLayer(
               return;
             }
 
-            const rawType = new Uint8Array(65536);
-            const isTextCore = new Uint8Array(65536);
-
-            for (let i = 0; i < 65536; i++) {
-              const p = i << 2;
-              const r = srcData[p];
-              const g = srcData[p + 1];
-              const b = srcData[p + 2];
-              const minC = r < g ? (r < b ? r : b) : g < b ? g : b;
-              const maxC = r > g ? (r > b ? r : b) : g > b ? g : b;
-
-              // 水域 (河川、湖泊、海洋)
-              if (b > r + 14 && b > 172 && g > 162) {
-                rawType[i] = 2;
-                continue;
-              }
-
-              // 橘黃粉紅主幹道 (國道、省道、主要幹道)
-              if (
-                r >= 220 &&
-                g >= 132 &&
-                b <= 218 &&
-                (r - b >= 22 || (r >= 234 && g >= 234 && b <= 212))
-              ) {
-                rawType[i] = 1;
-                continue;
-              }
-
-              // 公園與森林綠地
-              if (g > r + 8 && g > b + 6 && g >= 148) {
-                rawType[i] = 4;
-                continue;
-              }
-
-              // 偵測文字筆畫與小圖示
-              if (minC < 176 || (maxC - minC > 36 && r < 228)) {
-                isTextCore[i] = 1;
-                continue;
-              }
-
-              // 白色街巷道路
-              if (r >= 246 && g >= 246 && b >= 242) {
-                rawType[i] = 1;
-                continue;
-              }
-            }
-
-            const healType = new Uint8Array(65536);
-            for (let y = 0; y < 256; y++) {
-              const yOff = y << 8;
-              for (let x = 0; x < 256; x++) {
-                const idx = yOff + x;
-
-                let nearText = false;
-                const yMin = y > 3 ? y - 3 : 0;
-                const yMax = y < 252 ? y + 3 : 255;
-                const xMin = x > 3 ? x - 3 : 0;
-                const xMax = x < 252 ? x + 3 : 255;
-
-                for (let ny = yMin; ny <= yMax; ny++) {
-                  const nyOff = ny << 8;
-                  for (let nx = xMin; nx <= xMax; nx++) {
-                    if (isTextCore[nyOff + nx]) {
-                      nearText = true;
-                      break;
-                    }
-                  }
-                  if (nearText) break;
-                }
-
-                if (!nearText) {
-                  healType[idx] = rawType[idx];
-                } else {
-                  let roadVotes = 0;
-                  let waterVotes = 0;
-                  const offsets = [
-                    [-5, 0],
-                    [5, 0],
-                    [0, -5],
-                    [0, 5],
-                    [-4, -4],
-                    [4, -4],
-                    [-4, 4],
-                    [4, 4]
-                  ];
-                  for (let k = 0; k < 8; k++) {
-                    const sx = x + offsets[k][0];
-                    const sy = y + offsets[k][1];
-                    if (sx >= 0 && sx < 256 && sy >= 0 && sy < 256) {
-                      const sIdx = (sy << 8) + sx;
-                      if (!isTextCore[sIdx]) {
-                        const t = rawType[sIdx];
-                        if (t === 1) roadVotes++;
-                        else if (t === 2) waterVotes++;
-                      }
-                    }
-                  }
-                  if (waterVotes >= 3) healType[idx] = 2;
-                  else if (roadVotes >= 4) healType[idx] = 1;
-                  else healType[idx] = 0;
-                }
-              }
-            }
-
-            const finalType = new Uint8Array(65536);
-            for (let y = 0; y < 256; y++) {
-              const yOff = y << 8;
-              for (let x = 0; x < 256; x++) {
-                const idx = yOff + x;
-                let rCount = 0;
-                let wCount = 0;
-                for (let dy = -1; dy <= 1; dy++) {
-                  const ny = y + dy;
-                  if (ny < 0 || ny > 255) continue;
-                  const nyOff = ny << 8;
-                  for (let dx = -1; dx <= 1; dx++) {
-                    const nx = x + dx;
-                    if (nx < 0 || nx > 255) continue;
-                    const t = healType[nyOff + nx];
-                    if (t === 1) rCount++;
-                    else if (t === 2) wCount++;
-                  }
-                }
-                if (wCount >= 5) finalType[idx] = 2;
-                else if (rCount >= 4) finalType[idx] = 1;
-                else finalType[idx] = 0;
-              }
-            }
-
-            cachedFinalTileTypes.set(cacheKey, finalType);
+            const fields = extractSmoothInteractiveFields(srcData);
+            cachedInteractiveFields.set(cacheKey, fields);
             const { isMini, cameraPerspective } = getState();
-            paintFinalTypeToCanvas(
+            paintSmoothInteractiveTileToCanvas(
               ctx,
-              finalType,
+              fields,
               coords,
-              isMini,
               !isMini && cameraPerspective === 'surround'
             );
           } catch {
@@ -1281,10 +1238,10 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
 
     // ==================== 模式 B：互動地圖（圖一：周圍視角 360° 環景 vs 圖二：俯瞰視角） ====================
     const overheadMushScale = Math.max(
-      0.24,
-      Math.min(0.76, 0.50 * Math.pow(0.70, 15 - overheadZoom))
+      0.2,
+      Math.min(0.62, 0.38 * Math.pow(0.72, 15 - overheadZoom))
     );
-    const overheadBfScale = overheadMushScale / 0.50;
+    const overheadBfScale = overheadMushScale / 0.42;
     const uprightBillboardTransform = isSurround
       ? 'rotate(var(--neg-camera-bearing, 0deg)) scaleY(1.36) scale(var(--surround-node-scale, 1))'
       : `scale(${(0.68 * overheadBfScale).toFixed(2)})`;

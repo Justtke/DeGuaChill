@@ -17,6 +17,8 @@ interface DeGuaCharacterProps {
   showDecor: boolean;
   size?: number;
   isBouncing?: boolean;
+  carryingKind?: 'gift' | 'fruit' | 'seedling';
+  carryingEmoji?: string;
   onClick?: () => void;
 }
 
@@ -28,6 +30,8 @@ export const DeGuaCharacter: React.FC<DeGuaCharacterProps> = ({
   showDecor,
   size = 100,
   isBouncing = true,
+  carryingKind,
+  carryingEmoji,
   onClick
 }) => {
   const vMeta = VARIETY_CATALOG[variety];
@@ -99,42 +103,44 @@ export const DeGuaCharacter: React.FC<DeGuaCharacterProps> = ({
           )}
 
           {leafStage === 'bare' && (
-            <circle cx="0" cy="-16" r="2.2" fill="#15803D" />
+            <g>
+              <circle cx="0" cy="-16" r="3.4" fill="#65A30D" stroke="#365314" strokeWidth="1.2" />
+            </g>
           )}
 
           {leafStage === 'leaf' && (
-            <g transform="translate(0, -16)">
+            <g transform="translate(0, -17)">
               <path
-                d="M 0 0 C -16 -12 -20 5 -1 6 C 16 5 16 -12 0 0 Z"
-                fill="#22C55E"
+                d="M 0 2 C -20 -15 -23 6 -1 8 C 20 6 20 -15 0 2 Z"
+                fill="#4ADE80"
                 stroke="#15803D"
-                strokeWidth="2"
+                strokeWidth="2.2"
               />
-              <line x1="0" y1="5" x2="0" y2="-6" stroke="#15803D" strokeWidth="1.5" />
+              <line x1="0" y1="6" x2="0" y2="-8" stroke="#15803D" strokeWidth="1.6" />
             </g>
           )}
 
           {leafStage === 'bud' && (
-            <g transform="translate(0, -21)">
+            <g transform="translate(0, -22)">
               <path
-                d="M 0 -11 C 7 -5, 9 4, 0 8 C -9 4, -7 -5, 0 -11 Z"
-                fill={flowerHex === '#FFFFFF' ? '#F8FAFC' : flowerHex}
-                stroke="#15803D"
+                d="M 0 -13 C 9 -6, 11 5, 0 10 C -11 5, -9 -6, 0 -13 Z"
+                fill={flowerHex === '#FFFFFF' ? '#FFFFFF' : flowerHex}
+                stroke="#475569"
                 strokeWidth="1.8"
               />
-              <path d="M -7 4 Q 0 11 7 4 Q 0 1 -7 4 Z" fill="#22C55E" stroke="#15803D" strokeWidth="1.2" />
+              <path d="M -8 5 Q 0 13 8 5 Q 0 1 -8 5 Z" fill="#22C55E" stroke="#15803D" strokeWidth="1.4" />
             </g>
           )}
 
           {leafStage === 'flower' && (
             <g transform="translate(0, -22)" className="flower-glow">
-              <circle cx="0" cy="0" r="22" fill={PETAL_META[flowerColor].glowHex} opacity="0.65" />
-              <circle cx="0" cy="-10" r="7.5" fill={flowerHex} stroke="#CA8A04" strokeWidth="1.2" />
-              <circle cx="9.5" cy="-3" r="7.5" fill={flowerHex} stroke="#CA8A04" strokeWidth="1.2" />
-              <circle cx="6" cy="8" r="7.5" fill={flowerHex} stroke="#CA8A04" strokeWidth="1.2" />
-              <circle cx="-6" cy="8" r="7.5" fill={flowerHex} stroke="#CA8A04" strokeWidth="1.2" />
-              <circle cx="-9.5" cy="-3" r="7.5" fill={flowerHex} stroke="#CA8A04" strokeWidth="1.2" />
-              <circle cx="0" cy="0" r="5.5" fill="#F97316" />
+              <circle cx="0" cy="0" r="24" fill={PETAL_META[flowerColor].glowHex} opacity="0.65" />
+              <circle cx="0" cy="-11" r="8" fill={flowerHex} stroke={flowerColor === 'white' ? '#64748B' : '#CA8A04'} strokeWidth="1.3" />
+              <circle cx="10.5" cy="-3.5" r="8" fill={flowerHex} stroke={flowerColor === 'white' ? '#64748B' : '#CA8A04'} strokeWidth="1.3" />
+              <circle cx="6.5" cy="8.5" r="8" fill={flowerHex} stroke={flowerColor === 'white' ? '#64748B' : '#CA8A04'} strokeWidth="1.3" />
+              <circle cx="-6.5" cy="8.5" r="8" fill={flowerHex} stroke={flowerColor === 'white' ? '#64748B' : '#CA8A04'} strokeWidth="1.3" />
+              <circle cx="-10.5" cy="-3.5" r="8" fill={flowerHex} stroke={flowerColor === 'white' ? '#64748B' : '#CA8A04'} strokeWidth="1.3" />
+              <circle cx="0" cy="0" r="5.8" fill="#FACC15" stroke="#B45309" strokeWidth="1" />
             </g>
           )}
         </g>
@@ -281,6 +287,29 @@ export const DeGuaCharacter: React.FC<DeGuaCharacterProps> = ({
                 <text x="0" y="4.5" fontSize="14" textAnchor="middle">{DECOR_CATALOG[decor].icon}</text>
               </g>
             )}
+          </g>
+        )}
+        {/* 若正在搬運禮物 / 水果 / 瓜糰，繪製於前方手上 */}
+        {carryingKind === 'gift' && (
+          <g transform="translate(38, 62)" style={{ filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.28))' }}>
+            <rect x="0" y="6" width="44" height="36" rx="4" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="2" />
+            <rect x="-2" y="2" width="48" height="10" rx="3" fill="#F8FAFC" stroke="#CBD5E1" strokeWidth="1.6" />
+            <rect x="18" y="2" width="8" height="40" fill="#EF4444" />
+            <rect x="0" y="20" width="44" height="7" fill="#EF4444" />
+            <circle cx="17" cy="2" r="5" fill="#EF4444" />
+            <circle cx="27" cy="2" r="5" fill="#DC2626" />
+          </g>
+        )}
+        {carryingKind === 'fruit' && (
+          <g transform="translate(60, 74)" style={{ filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.28))' }}>
+            <circle cx="0" cy="0" r="22" fill="#FEF9C3" stroke="#F59E0B" strokeWidth="2" />
+            <text x="0" y="9" fontSize="26" textAnchor="middle">{carryingEmoji || '🍎'}</text>
+          </g>
+        )}
+        {carryingKind === 'seedling' && (
+          <g transform="translate(60, 76)" style={{ filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.28))' }}>
+            <ellipse cx="0" cy="0" rx="18" ry="15" fill="#FBBF24" stroke="#B45309" strokeWidth="2" />
+            <path d="M 0 -15 Q 6 -24 14 -20 Q 8 -13 0 -15 Z" fill="#22C55E" stroke="#15803D" strokeWidth="1.5" />
           </g>
         )}
       </svg>

@@ -11,47 +11,34 @@ interface FlowerPatchSpec {
 }
 
 const HOME_PATCHES: FlowerPatchSpec[] = [
-  // 遠景地平線沿岸繁花草叢（任務卡下方左右延伸）
-  { id: 1, xPct: 8, yPct: 12, scale: 0.56, kind: 'daisy_cluster', swayDelay: '0s' },
-  { id: 2, xPct: 20, yPct: 16, scale: 0.58, kind: 'pink_blossom', swayDelay: '0.4s', slow: true },
-  { id: 3, xPct: 35, yPct: 11, scale: 0.52, kind: 'grass', swayDelay: '0.8s' },
-  { id: 4, xPct: 68, yPct: 13, scale: 0.55, kind: 'lavender', swayDelay: '0.3s', slow: true },
-  { id: 5, xPct: 84, yPct: 10, scale: 0.58, kind: 'daisy_cluster', swayDelay: '1.1s' },
-  { id: 6, xPct: 93, yPct: 17, scale: 0.62, kind: 'red_poppy', swayDelay: '0.5s' },
-  // 中景密集繁花花海
-  { id: 7, xPct: 6, yPct: 34, scale: 0.8, kind: 'red_poppy', swayDelay: '0.2s' },
-  { id: 8, xPct: 17, yPct: 28, scale: 0.72, kind: 'blue_clover', swayDelay: '0.9s', slow: true },
-  { id: 9, xPct: 28, yPct: 38, scale: 0.78, kind: 'daisy_cluster', swayDelay: '0.4s' },
-  { id: 10, xPct: 44, yPct: 32, scale: 0.68, kind: 'grass', swayDelay: '1.3s' },
-  { id: 11, xPct: 62, yPct: 30, scale: 0.72, kind: 'pink_blossom', swayDelay: '0.7s', slow: true },
-  { id: 12, xPct: 76, yPct: 38, scale: 0.82, kind: 'daisy_cluster', swayDelay: '0.1s' },
-  { id: 13, xPct: 90, yPct: 33, scale: 0.78, kind: 'lavender', swayDelay: '1.0s' },
-  // 圍繞中央小人周圍的盛開花團
-  { id: 14, xPct: 11, yPct: 54, scale: 0.94, kind: 'pink_blossom', swayDelay: '0.3s' },
-  { id: 15, xPct: 24, yPct: 48, scale: 0.88, kind: 'lavender', swayDelay: '0.8s', slow: true },
-  { id: 16, xPct: 37, yPct: 62, scale: 0.92, kind: 'blue_clover', swayDelay: '0.2s' },
-  { id: 17, xPct: 64, yPct: 60, scale: 0.9, kind: 'red_poppy', swayDelay: '1.2s', slow: true },
-  { id: 18, xPct: 78, yPct: 50, scale: 0.88, kind: 'daisy_cluster', swayDelay: '0.6s' },
-  { id: 19, xPct: 91, yPct: 56, scale: 0.96, kind: 'grass', swayDelay: '0.4s' },
-  // 近景底部濃密花草（延伸至螢幕最底緣）
-  { id: 20, xPct: 8, yPct: 76, scale: 1.15, kind: 'daisy_cluster', swayDelay: '0.7s' },
-  { id: 21, xPct: 21, yPct: 84, scale: 1.22, kind: 'red_poppy', swayDelay: '0.1s', slow: true },
-  { id: 22, xPct: 34, yPct: 78, scale: 1.05, kind: 'pink_blossom', swayDelay: '0.9s' },
-  { id: 23, xPct: 49, yPct: 88, scale: 1.18, kind: 'daisy_cluster', swayDelay: '0.4s', slow: true },
-  { id: 24, xPct: 65, yPct: 80, scale: 1.12, kind: 'lavender', swayDelay: '1.1s' },
-  { id: 25, xPct: 80, yPct: 86, scale: 1.24, kind: 'blue_clover', swayDelay: '0.5s' },
-  { id: 26, xPct: 92, yPct: 79, scale: 1.16, kind: 'pink_blossom', swayDelay: '0.8s', slow: true },
-  { id: 27, xPct: 16, yPct: 95, scale: 1.32, kind: 'grass', swayDelay: '0.2s' },
-  { id: 28, xPct: 58, yPct: 96, scale: 1.28, kind: 'red_poppy', swayDelay: '0.6s' },
-  { id: 29, xPct: 86, yPct: 96, scale: 1.32, kind: 'daisy_cluster', swayDelay: '0.3s', slow: true }
+  // 自然皮克敏風格草原：柔和細碎草葉簇＋極少量淡雅小白點野草花（不搶走主角與地瓜球小隊焦點）
+  { id: 1, xPct: 12, yPct: 24, scale: 0.42, kind: 'grass', swayDelay: '0.2s' },
+  { id: 2, xPct: 28, yPct: 18, scale: 0.36, kind: 'grass', swayDelay: '0.9s', slow: true },
+  { id: 3, xPct: 68, yPct: 22, scale: 0.4, kind: 'grass', swayDelay: '0.4s' },
+  { id: 4, xPct: 86, yPct: 26, scale: 0.45, kind: 'grass', swayDelay: '1.1s', slow: true },
+  { id: 5, xPct: 8, yPct: 48, scale: 0.54, kind: 'grass', swayDelay: '0.3s' },
+  { id: 6, xPct: 22, yPct: 42, scale: 0.28, kind: 'daisy_cluster', swayDelay: '0.7s', slow: true },
+  { id: 7, xPct: 77, yPct: 44, scale: 0.3, kind: 'daisy_cluster', swayDelay: '0.5s' },
+  { id: 8, xPct: 91, yPct: 52, scale: 0.56, kind: 'grass', swayDelay: '1.2s' },
+  { id: 9, xPct: 15, yPct: 72, scale: 0.62, kind: 'grass', swayDelay: '0.6s', slow: true },
+  { id: 10, xPct: 42, yPct: 76, scale: 0.5, kind: 'grass', swayDelay: '0.1s' },
+  { id: 11, xPct: 72, yPct: 74, scale: 0.58, kind: 'grass', swayDelay: '0.8s' },
+  { id: 12, xPct: 6, yPct: 91, scale: 0.72, kind: 'grass', swayDelay: '0.3s', slow: true },
+  { id: 13, xPct: 33, yPct: 92, scale: 0.34, kind: 'daisy_cluster', swayDelay: '1.0s' },
+  { id: 14, xPct: 64, yPct: 93, scale: 0.68, kind: 'grass', swayDelay: '0.4s' },
+  { id: 15, xPct: 88, yPct: 90, scale: 0.7, kind: 'grass', swayDelay: '0.9s', slow: true }
 ];
 
 const GARDEN_PATCHES: FlowerPatchSpec[] = [
-  ...HOME_PATCHES.map((p) => ({ ...p, yPct: 8 + p.yPct * 0.9 })),
-  { id: 30, xPct: 48, yPct: 22, scale: 0.65, kind: 'daisy_cluster', swayDelay: '0.2s' },
-  { id: 31, xPct: 54, yPct: 44, scale: 0.8, kind: 'grass', swayDelay: '0.9s', slow: true },
-  { id: 32, xPct: 28, yPct: 64, scale: 0.98, kind: 'red_poppy', swayDelay: '0.5s' },
-  { id: 33, xPct: 72, yPct: 68, scale: 1.0, kind: 'pink_blossom', swayDelay: '1.1s' }
+  { id: 20, xPct: 10, yPct: 18, scale: 0.62, kind: 'daisy_cluster', swayDelay: '0s' },
+  { id: 21, xPct: 24, yPct: 24, scale: 0.65, kind: 'pink_blossom', swayDelay: '0.4s', slow: true },
+  { id: 22, xPct: 70, yPct: 19, scale: 0.62, kind: 'lavender', swayDelay: '0.3s', slow: true },
+  { id: 23, xPct: 88, yPct: 22, scale: 0.68, kind: 'red_poppy', swayDelay: '0.5s' },
+  { id: 24, xPct: 12, yPct: 48, scale: 0.85, kind: 'blue_clover', swayDelay: '0.9s', slow: true },
+  { id: 25, xPct: 84, yPct: 46, scale: 0.88, kind: 'daisy_cluster', swayDelay: '0.1s' },
+  { id: 26, xPct: 16, yPct: 78, scale: 1.05, kind: 'red_poppy', swayDelay: '0.2s', slow: true },
+  { id: 27, xPct: 50, yPct: 82, scale: 1.0, kind: 'daisy_cluster', swayDelay: '0.4s' },
+  { id: 28, xPct: 82, yPct: 80, scale: 1.08, kind: 'pink_blossom', swayDelay: '0.8s', slow: true }
 ];
 
 const FlowerPatchSvg: React.FC<{ kind: FlowerPatchSpec['kind'] }> = ({ kind }) => {
@@ -147,7 +134,7 @@ export const LushFlowerMeadowBackdrop: React.FC<{
           inset: 0,
           background:
             variant === 'home'
-              ? 'linear-gradient(180deg, rgba(163,230,53,0.18) 0%, #6CC644 12%, #5AB63B 46%, #459D2E 82%, #3B8927 100%)'
+              ? 'linear-gradient(180deg, rgba(180,215,243,0.92) 0%, rgba(154,210,168,0.88) 7%, #83CB5B 18%, #63BA43 44%, #4CA131 76%, #3E8E27 100%)'
               : 'linear-gradient(180deg, #4BA134 0%, #5BB842 22%, #6BC84D 54%, #53AD38 82%, #3E8E2A 100%)'
         }}
       />

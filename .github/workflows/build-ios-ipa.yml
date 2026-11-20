@@ -1,5 +1,8 @@
 name: Build iPhone IPA (SideStore / AltStore Ready)
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ main, master ]
@@ -113,3 +116,14 @@ jobs:
         with:
           name: DeGuaChill-iOS-IPA
           path: DeGuaChill.ipa
+
+      - name: Publish Rolling Latest Release IPA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest DeGuaChill.ipa --clobber
+            gh release edit latest --notes "Latest build from commit ${{ github.sha }}"
+          else
+            gh release create latest DeGuaChill.ipa --title "DeGuaChill Latest iOS IPA" --notes "Latest build from commit ${{ github.sha }}"
+          fi
