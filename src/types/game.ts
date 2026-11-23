@@ -95,7 +95,7 @@ export interface DeGuaCreature {
   placeName: string;
   lat: number;
   lng: number;
-  friendship: number; // 0 ~ 400 (每 100 為 1 顆紅心)
+  friendship: number; // 0 ~ 800 (0~400 為 1~4 顆紅心；400~800 為 1~4 顆金心)
   hasDecor: boolean;  // 初始巨大苗拔出為 true；一般苗滿 4 顆心完成「禮物探險」後變為 true
   giftExpeditionCreated: boolean;
   leafStage: LeafStage;
@@ -136,6 +136,10 @@ export interface ExpeditionItem {
   lng: number;
   distanceMeters: number;
   requiredStrength: number;
+  maxCarriers?: number;
+  weightGrams?: number;
+  discoveredAt?: number;
+  expiresAt?: number;
   // 若為花苗探險
   seedlingVariety?: DeGuaVariety;
   seedlingDecor?: DecorCategory;
@@ -147,9 +151,14 @@ export interface ExpeditionItem {
   nectarAmount?: number;
   // 若為滿4心拿禮物探險
   targetCreatureId?: string;
-  // 進行中狀態
+  // 進行中狀態與精確去/回程時間追蹤
   status: 'available' | 'active' | 'completed';
   assignedCreatureIds: string[];
+  originLat?: number;
+  originLng?: number;
+  startedAt?: number;
+  outboundDurationMs?: number;
+  inboundDurationMs?: number;
   completesAt?: number;
 }
 

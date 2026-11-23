@@ -2,11 +2,18 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DECOR_CATALOG,
   DeGuaCreature,
+  ExpeditionItem,
   PetalColor,
   VARIETY_CATALOG
 } from '../types/game';
+import { formatExpeditionDurationParts } from '../services/expeditionService';
 import { DeGuaCharacter } from './DeGuaCharacter';
 import { LushFlowerMeadowBackdrop } from './LushFlowerMeadowBackdrop';
+import {
+  CreatureHeartsRow,
+  ExpeditionGiftBoxSvg,
+  ExpeditionItemArtwork
+} from './ExpeditionArtwork';
 
 export interface MeadowFruitDrop {
   id: string;
@@ -37,11 +44,15 @@ interface GardenWhistleViewProps {
   petalJar: Record<PetalColor, number>;
   selectedNectar: PetalColor;
   readyFruitExpeditionsCount?: number;
+  completedExpeditions?: ExpeditionItem[];
+  activeExpeditions?: ExpeditionItem[];
   onSelectNectar: (color: PetalColor) => void;
   onThrowNectarToFeed: (color: PetalColor) => void;
   onSwipePluckSingle: (creatureId: string) => void;
   onWhistleGather: () => void;
   onCollectAllFruits: (meadowFruitsCollected: MeadowFruitDrop[]) => void;
+  onClaimReturnedExpedition?: (expId: string) => void;
+  onOpenGiftExpedition?: (creature: DeGuaCreature) => void;
   onToggleInSquad: (creatureId: string) => void;
   onToggleFavorite: (creatureId: string) => void;
   onOpenPlanting: () => void;
@@ -126,11 +137,15 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
   petalJar,
   selectedNectar,
   readyFruitExpeditionsCount = 0,
+  completedExpeditions = [],
+  activeExpeditions = [],
   onSelectNectar,
   onThrowNectarToFeed,
   onSwipePluckSingle,
   onWhistleGather,
   onCollectAllFruits,
+  onClaimReturnedExpedition,
+  onOpenGiftExpedition,
   onToggleInSquad,
   onToggleFavorite,
   onOpenPlanting,
@@ -152,6 +167,7 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
   const [crewFilter, setCrewFilter] = useState<'all' | 'squad' | 'favorite'>('all');
   const [floatingFX, setFloatingFX] = useState<FloatingFeedback[]>([]);
   const [nectarThrowWave, setNectarThrowWave] = useState<number>(0);
+  const [giftPromptCreature, setGiftPromptCreature] = useState<DeGuaCreature | null>(null);
 
   const lastWhistleTapRef = useRef<number>(0);
   const gatherTimerRef = useRef<number | null>(null);
@@ -270,13 +286,17 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
     executeGatherAll();
 
     const collected = meadowFruits;
+    if (completedExpeditions.length > 0 && onClaimReturnedExpedition) {
+      completedExpeditions.forEach((exp) => onClaimReturnedExpedition(exp.id));
+      spawnFloatingText('🎁 已一次收下探險物品！', 50, 26);
+    }
     if (collected.length > 0 || readyFruitExpeditionsCount > 0) {
       onCollectAllFruits(collected);
       collected.forEach((f) => {
         spawnFloatingText(`${f.emoji} +${f.nectarAmount}`, f.xPct, f.yPct - 4);
       });
       setMeadowFruits([]);
-    } else {
+    } else if (completedExpeditions.length === 0) {
       onCollectAllFruits([]);
       spawnFloatingText('🍎 果實已全部收齊！', 50, 26);
     }
@@ -493,6 +513,134 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
         </div>
       )}
 
+      {/* 探險完成回來！頂端通知小卡＋隊伍高舉戰利品集合草原（對照皮克敏圖 14） */}
+      {completedExpeditions.length > 0 && (() => {
+        const retExp = completedExpeditions[0];
+        const totalMs =
+          retExp.completesAt && retExp.startedAt
+            ? Math.max(60_000, retExp.completesAt - retExp.startedAt)
+            : (retExp.outboundDurationMs || 60_000) + (retExp.inboundDurationMs || 120_000);
+        const durParts = formatExpeditionDurationParts(totalMs);
+        const carrierList = retExp.assignedCreatureIds
+          .map((id) => creatures.find((c) => c.id === id))
+          .filter((c): c is DeGuaCreature => Boolean(c));
+
+        return (
+          <>
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(var(--top-safe-hud) + 54px)',
+                left: 24,
+                right: 24,
+                zIndex: 42,
+                background: 'rgba(255,255,255,0.95)',
+                backdropFilter: 'blur(8px)',
+                borderRadius: 18,
+                padding: '13px 16px',
+                boxShadow: '0 8px 24px rgba(15,23,42,0.18)',
+                color: '#1E293B',
+                fontSize: 15,
+                fontWeight: 700,
+                lineHeight: 1.45,
+                pointerEvents: 'none'
+              }}
+            >
+              經過 <b style={{ fontWeight: 900 }}>{durParts.compactText}</b> 後，地瓜球從前往{' '}
+              <b style={{ fontWeight: 900 }}>{retExp.placeName}</b> 的探險回來了！
+            </div>
+
+            <button
+              onClick={() => {
+                if (onClaimReturnedExpedition) {
+                  onClaimReturnedExpedition(retExp.id);
+                  spawnFloatingText('✨ 已收下戰利品！+1 友好度', 50, 44);
+                }
+              }}
+              className="degua-bounce"
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '56%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 45,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                padding: 0
+              }}
+              title="點擊收下探險物品！"
+            >
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* 團聚扛貨小隊 */}
+                <div style={{ display: 'flex', gap: 0, position: 'relative', marginBottom: -14 }}>
+                  {(carrierList.length > 0 ? carrierList.slice(0, 5) : squadCreatures.slice(0, 3)).map((c, idx) => (
+                    <div key={c.id} style={{ marginLeft: idx === 0 ? 0 : -14 }}>
+                      <DeGuaCharacter
+                        variety={c.variety}
+                        decor={c.decor}
+                        leafStage={c.leafStage}
+                        flowerColor={c.flowerColor}
+                        showDecor={c.hasDecor}
+                        size={46}
+                        isBouncing={true}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div
+                style={{
+                  position: 'relative',
+                  background: 'radial-gradient(circle, rgba(254,249,195,0.85), rgba(255,255,255,0))',
+                  borderRadius: '50%',
+                  padding: 4
+                }}
+              >
+                <ExpeditionItemArtwork exp={retExp} isDecorCompleted={false} size={64} showDecorBadge={false} />
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -6,
+                    background: 'rgba(15,23,42,0.78)',
+                    color: '#FFFFFF',
+                    fontSize: 13,
+                    fontWeight: 900,
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '2px solid #FFFFFF'
+                  }}
+                >
+                  {Math.max(1, retExp.assignedCreatureIds.length)}
+                </span>
+              </div>
+              <span
+                style={{
+                  marginTop: 4,
+                  background: 'rgba(16, 185, 129, 0.94)',
+                  color: '#FFFFFF',
+                  fontSize: 12,
+                  fontWeight: 900,
+                  padding: '4px 12px',
+                  borderRadius: 99,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                }}
+              >
+                點此收下【{retExp.title}】
+              </span>
+            </button>
+          </>
+        );
+      })()}
+
       {/* 口哨集合波紋動畫 */}
       {whistlePulseCount > 0 && (
         <div
@@ -521,10 +669,16 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
         />
       )}
 
-      {/* 自由散步的隊伍地瓜球（每一隻都會在花草原上走，滑花瓣可採收） */}
+      {/* 自由散步的隊伍地瓜球（每一隻都會在花草原上走，滑花瓣可採收；滿 4 顆紅心且未拿禮物者頭上浮現 🎁 禮物氣泡） */}
       {squadCreatures.map((c) => {
         const pt = roamPositions[c.id] || { xPct: 50, yPct: 45, facingRight: true };
         const canPluck = c.leafStage === 'flower';
+        const isGiftExpeditionRunning = activeExpeditions.some(
+          (e) => e.kind === 'gift' && e.targetCreatureId === c.id && e.status !== 'available'
+        );
+        const hasPendingGiftBubble =
+          c.friendship >= 400 && !c.hasDecor && c.busyState === 'free' && !isGiftExpeditionRunning;
+
         return (
           <div
             key={c.id}
@@ -547,6 +701,33 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
               alignItems: 'center'
             }}
           >
+            {hasPendingGiftBubble && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGiftPromptCreature(c);
+                }}
+                className="degua-bounce"
+                style={{
+                  transform: `scaleX(${pt.facingRight ? 1 : -1})`,
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  border: '2px solid rgba(255,255,255,0.9)',
+                  background: 'radial-gradient(circle at 32% 30%, rgba(255,255,255,0.95), rgba(226,232,240,0.82))',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.28), 0 0 12px rgba(254,202,202,0.85)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  marginBottom: 2,
+                  padding: 0
+                }}
+                title="友好度已達 4 顆心！點此派它去出生地拿禮物"
+              >
+                <ExpeditionGiftBoxSvg size={28} />
+              </button>
+            )}
             {c.isFavorite && (
               <div
                 style={{
@@ -1080,6 +1261,124 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== 滿 4 顆紅心「出生地禮物」觸發彈窗（對照皮克敏圖 15） ==================== */}
+      {giftPromptCreature && (
+        <div
+          onClick={() => setGiftPromptCreature(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 120,
+            background: 'rgba(15, 23, 42, 0.62)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px 18px'
+          }}
+        >
+          {/* 上方地瓜球資訊背景卡 */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: 16,
+              padding: '10px 16px',
+              marginBottom: 14,
+              color: '#E2E8F0',
+              textAlign: 'center',
+              maxWidth: 320
+            }}
+          >
+            <div style={{ fontSize: 15, fontWeight: 900, color: '#FFFFFF' }}>
+              {giftPromptCreature.name}（{VARIETY_CATALOG[giftPromptCreature.variety].name}）
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 700 }}>友好度</span>
+              <CreatureHeartsRow friendship={giftPromptCreature.friendship} heartSize={12} />
+            </div>
+            <div style={{ fontSize: 11.5, marginTop: 3 }}>出生地：{giftPromptCreature.placeName}</div>
+          </div>
+
+          <div
+            style={{
+              fontSize: 22,
+              fontWeight: 900,
+              color: '#FFFFFF',
+              textShadow: '0 2px 10px rgba(0,0,0,0.45)',
+              marginBottom: 10
+            }}
+          >
+            友好度已達到4
+          </div>
+
+          <div style={{ marginBottom: 14 }} onClick={(e) => e.stopPropagation()}>
+            <ExpeditionGiftBoxSvg size={108} />
+          </div>
+
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 360,
+              background: '#FFFFFF',
+              borderRadius: 24,
+              padding: '22px 20px 18px',
+              boxShadow: '0 16px 36px rgba(0,0,0,0.34)',
+              textAlign: 'center'
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#334155', lineHeight: 1.55 }}>
+              {giftPromptCreature.name}想要去它的出生地點撿拾道具。
+              <br />
+              要派它去探險嗎？
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
+              <button
+                onClick={() => setGiftPromptCreature(null)}
+                style={{
+                  flex: 1,
+                  borderRadius: 99,
+                  border: '1.5px solid #94A3B8',
+                  background: '#FFFFFF',
+                  color: '#334155',
+                  padding: '11px 12px',
+                  fontSize: 15,
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                稍後再說
+              </button>
+              <button
+                onClick={() => {
+                  const target = giftPromptCreature;
+                  setGiftPromptCreature(null);
+                  if (onOpenGiftExpedition) {
+                    onOpenGiftExpedition(target);
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  borderRadius: 99,
+                  border: '1.5px solid #3E9A8C',
+                  background: '#FFFFFF',
+                  color: '#2B8A78',
+                  padding: '11px 12px',
+                  fontSize: 15,
+                  fontWeight: 900,
+                  cursor: 'pointer'
+                }}
+              >
+                前往探險
+              </button>
             </div>
           </div>
         </div>

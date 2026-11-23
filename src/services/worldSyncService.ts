@@ -11,6 +11,7 @@ import {
   PlantedFlowerCell
 } from '../types/game';
 import { getNearestRealLandmarkInfo } from './realMapService';
+import { getFruitExpeditionSpecs, getSeedlingExpeditionSpecs } from './expeditionService';
 
 export interface WorldDeltaState {
   flowers: Record<string, PlantedFlowerCell>;
@@ -310,12 +311,13 @@ export async function syncWorldStateWithCloud(
   }
 }
 
-const FRUITS: { emoji: string; name: string; color: PetalColor; amount: number; strength: number }[] = [
-  { emoji: '🍋', name: '屏東四季檸檬', color: 'yellow', amount: 18, strength: 3 },
-  { emoji: '🍎', name: '梨山蜜蘋果', color: 'red', amount: 22, strength: 4 },
-  { emoji: '🍑', name: '拉拉山水蜜桃', color: 'red', amount: 20, strength: 3 },
-  { emoji: '🫐', name: '高山藍莓串', color: 'blue', amount: 16, strength: 2 },
-  { emoji: '🍐', name: '燕巢水晶芭樂', color: 'white', amount: 18, strength: 3 }
+const FRUITS: { emoji: string; name: string; color: PetalColor; baseWeight: number }[] = [
+  { emoji: '🍏', name: '青蘋果', color: 'white', baseWeight: 321 },
+  { emoji: '🍋', name: '檸檬', color: 'yellow', baseWeight: 268 },
+  { emoji: '🍎', name: '紅蘋果', color: 'red', baseWeight: 346 },
+  { emoji: '🍊', name: '橘子', color: 'yellow', baseWeight: 295 },
+  { emoji: '🍑', name: '水蜜桃', color: 'red', baseWeight: 312 },
+  { emoji: '🫐', name: '藍莓', color: 'blue', baseWeight: 144 }
 ];
 
 const VARIETY_LIST: DeGuaVariety[] = ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'];
@@ -423,17 +425,25 @@ export async function triggerDetectorScan(
   const fruit = FRUITS[Math.floor(Math.random() * FRUITS.length)];
   const variety = VARIETY_LIST[Math.floor(Math.random() * VARIETY_LIST.length)];
   const isHuge = Math.random() < 0.22;
+  const now = Date.now();
+  const seedSpecs = getSeedlingExpeditionSpecs(variety, isHuge, Math.floor(now % 100));
+  const fruitWeight = fruit.baseWeight + Math.floor(Math.random() * 45) - 18;
+  const fruitSpecs = getFruitExpeditionSpecs(fruit.color, fruitWeight);
 
   const newExpeditions: ExpeditionItem[] = [
     {
-      id: `exp_seed_${Date.now()}_1`,
+      id: `exp_seed_${now}_1`,
       kind: 'seedling',
-      title: isHuge ? '巨大瓜糰' : '野生瓜糰',
+      title: isHuge ? '巨大瓜糰' : `${variety === 'red' ? '紅色' : variety === 'yellow' ? '黃色' : variety === 'blue' ? '藍色' : variety === 'purple' ? '紫色' : variety === 'white' ? '白色' : variety === 'winged' ? '粉紅' : '竹炭'}瓜糰`,
       placeName: `${pickedPlace1.name} 附近`,
       lat: pickedPlace1.lat,
       lng: pickedPlace1.lng,
       distanceMeters: 85 + Math.floor(Math.random() * 140),
-      requiredStrength: isHuge ? 3 : 1,
+      requiredStrength: seedSpecs.requiredStrength,
+      maxCarriers: seedSpecs.maxCarriers,
+      weightGrams: seedSpecs.weightGrams,
+      discoveredAt: now,
+      expiresAt: now + 3 * 86_400_000,
       seedlingVariety: variety,
       seedlingDecor: pickedPlace1.decor,
       seedlingIsHuge: isHuge,
@@ -441,18 +451,22 @@ export async function triggerDetectorScan(
       assignedCreatureIds: []
     },
     {
-      id: `exp_fruit_${Date.now()}_2`,
+      id: `exp_fruit_${now}_2`,
       kind: 'fruit',
       title: fruit.name,
       placeName: `${pickedPlace2.name} 附近`,
       lat: pickedPlace2.lat,
       lng: pickedPlace2.lng,
       distanceMeters: 95 + Math.floor(Math.random() * 160),
-      requiredStrength: fruit.strength,
+      requiredStrength: fruitSpecs.requiredStrength,
+      maxCarriers: fruitSpecs.maxCarriers,
+      weightGrams: fruitWeight,
+      discoveredAt: now,
+      expiresAt: now + 3 * 86_400_000,
       fruitEmoji: fruit.emoji,
       fruitName: fruit.name,
       nectarColor: fruit.color,
-      nectarAmount: fruit.amount,
+      nectarAmount: fruitSpecs.nectarAmount,
       status: 'available',
       assignedCreatureIds: []
     }

@@ -328,7 +328,8 @@ export function feedNectarToSquad(
     usedNectar++;
 
     const nextFeedCount = Math.min(MAX_FEED_SLOTS, (c.feedCount ?? 0) + 1);
-    const nextFriendship = Math.min(400, c.friendship + 20);
+    const friendGain = c.friendship < 400 ? 20 : 5;
+    const nextFriendship = Math.min(800, c.friendship + friendGain);
     const becameGiftReady = nextFriendship >= 400 && !c.hasDecor && !c.giftExpeditionCreated;
 
     let nextLeafStage: DeGuaCreature['leafStage'] = 'flower';
@@ -423,5 +424,56 @@ export function harvestCreatureFlower(
     petalsGained,
     petalColor: target.flowerColor,
     becameBare
+  };
+}
+
+/**
+ * 探險結束返還隊員並結算友好度：
+ * - 一般探險（花苗／水果）固定 +1 點友好度（不會因隻數較少而加倍）
+ * - 禮物探險則是讓達成 4 顆紅心的主角帶回專屬飾品 (hasDecor = true)
+ */
+export function finalizeExpeditionCreatures(
+  creatures: DeGuaCreature[],
+  assignedIds: string[],
+  kind: 'seedling' | 'fruit' | 'gift',
+  targetCreatureId?: string
+): {
+  creatures: DeGuaCreature[];
+  giftReadyCreatures: DeGuaCreature[];
+} {
+  const assignedSet = new Set(assignedIds);
+  const giftReadyCreatures: DeGuaCreature[] = [];
+
+  const nextCreatures = creatures.map((c) => {
+    const isTargetGift = kind === 'gift' && c.id === targetCreatureId;
+    const participated = assignedSet.has(c.id) || isTargetGift;
+    if (!participated) return c;
+
+    if (isTargetGift) {
+      return {
+        ...c,
+        hasDecor: true,
+        giftExpeditionCreated: true,
+        busyState: 'free' as const
+      };
+    }
+
+    const nextFriendship = Math.min(800, c.friendship + 1);
+    const becameGiftReady = nextFriendship >= 400 && !c.hasDecor && !c.giftExpeditionCreated;
+    const updated: DeGuaCreature = {
+      ...c,
+      friendship: nextFriendship,
+      busyState: 'free' as const,
+      giftExpeditionCreated: becameGiftReady ? true : c.giftExpeditionCreated
+    };
+    if (becameGiftReady) {
+      giftReadyCreatures.push(updated);
+    }
+    return updated;
+  });
+
+  return {
+    creatures: nextCreatures,
+    giftReadyCreatures
   };
 }

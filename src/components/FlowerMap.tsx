@@ -47,6 +47,14 @@ interface FlowerMapProps {
   bigFlowers: BigFlowerNode[];
   mushrooms: MushroomNode[];
   activeExpeditions: ExpeditionItem[];
+  followCrewMode?: boolean;
+  followPayload?: {
+    kind: ExpeditionItem['kind'];
+    variety?: DeGuaVariety;
+    fruitEmoji?: string;
+    phase: 'outbound' | 'inbound' | 'completed';
+  };
+  allowPinchPerspectiveSwitch?: boolean;
   onWalkTo?: (lat: number, lng: number) => void;
   onSelectBigFlower?: (bf: BigFlowerNode) => void;
   onSelectMushroom?: (m: MushroomNode) => void;
@@ -767,6 +775,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   recenterSeq = 0,
   focusedTarget = null,
   onBearingChange,
+  onPerspectiveChange,
   myLat,
   myLng,
   isPlanting,
@@ -776,6 +785,9 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   worldDelta,
   bigFlowers,
   mushrooms,
+  followCrewMode = false,
+  followPayload,
+  allowPinchPerspectiveSwitch = false,
   onSelectBigFlower,
   onSelectMushroom
 }) => {
@@ -853,6 +865,11 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   playerCoordRef.current = { lat: myLat, lng: myLng };
   const activePerspectiveRef = useRef<'surround' | 'overhead'>(cameraPerspective);
   activePerspectiveRef.current = cameraPerspective;
+  const onPerspectiveChangeRef = useRef(onPerspectiveChange);
+  onPerspectiveChangeRef.current = onPerspectiveChange;
+  const allowPinchSwitchRef = useRef(allowPinchPerspectiveSwitch);
+  allowPinchSwitchRef.current = allowPinchPerspectiveSwitch;
+  const pinchSwitchCooldownRef = useRef<number>(0);
 
   const activeBearing = onBearingChange ? cameraBearing : internalBearing;
   const activeBearingRef = useRef<number>(activeBearing);
@@ -1202,16 +1219,54 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         const p = playerCoordRef.current;
 
         if (activePerspectiveRef.current === 'surround') {
+          const rawTarget = pinchRef.current.startSurroundZoom + zoomDelta;
+          if (
+            allowPinchSwitchRef.current &&
+            onPerspectiveChangeRef.current &&
+            rawTarget < SURROUND_MIN_ZOOM - 0.08 &&
+            Date.now() - pinchSwitchCooldownRef.current > 320
+          ) {
+            pinchSwitchCooldownRef.current = Date.now();
+            hasPannedOverheadRef.current = false;
+            const matched = OVERHEAD_MAX_ZOOM - 0.12;
+            overheadZoomRef.current = matched;
+            pinchRef.current.startDist = Math.max(12, d);
+            pinchRef.current.startOverheadZoom = matched;
+            pinchRef.current.committedOverheadZoom = matched;
+            activePerspectiveRef.current = 'overhead';
+            applyOverheadDomTransform(matched, matched, nextBearing);
+            setOverheadZoom(matched);
+            onPerspectiveChangeRef.current('overhead');
+            return;
+          }
           const clamped = Math.max(
             SURROUND_MIN_ZOOM,
-            Math.min(SURROUND_MAX_ZOOM, Number((pinchRef.current.startSurroundZoom + zoomDelta).toFixed(3)))
+            Math.min(SURROUND_MAX_ZOOM, Number(rawTarget.toFixed(3)))
           );
           surroundZoomRef.current = clamped;
           applySurroundDomTransform(clamped, nextBearing);
         } else {
+          const rawTarget = pinchRef.current.startOverheadZoom + zoomDelta;
+          if (
+            allowPinchSwitchRef.current &&
+            onPerspectiveChangeRef.current &&
+            rawTarget > OVERHEAD_MAX_ZOOM + 0.08 &&
+            Date.now() - pinchSwitchCooldownRef.current > 320
+          ) {
+            pinchSwitchCooldownRef.current = Date.now();
+            const matched = SURROUND_MIN_ZOOM + 0.25;
+            surroundZoomRef.current = matched;
+            pinchRef.current.startDist = Math.max(12, d);
+            pinchRef.current.startSurroundZoom = matched;
+            activePerspectiveRef.current = 'surround';
+            applySurroundDomTransform(matched, nextBearing);
+            setSurroundZoom(matched);
+            onPerspectiveChangeRef.current('surround');
+            return;
+          }
           const clamped = Math.max(
             OVERHEAD_MIN_ZOOM,
-            Math.min(OVERHEAD_MAX_ZOOM, Number((pinchRef.current.startOverheadZoom + zoomDelta).toFixed(3)))
+            Math.min(OVERHEAD_MAX_ZOOM, Number(rawTarget.toFixed(3)))
           );
           overheadZoomRef.current = clamped;
           const pinchScale = Math.pow(2, clamped - pinchRef.current.committedOverheadZoom);
@@ -1840,6 +1895,49 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     }
 
     if (isSurround) {
+      if (followCrewMode) {
+        const carryBadge =
+          followPayload?.phase === 'inbound'
+            ? `<div style="position:absolute;left:50%;top:12%;transform:translate(-50%,-50%);font-size:24px;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.35));z-index:40;">${
+                followPayload.kind === 'gift'
+                  ? '🎁'
+                  : followPayload.kind === 'fruit'
+                    ? followPayload.fruitEmoji || '🍏'
+                    : '🪴'
+              }</div>`
+            : '';
+        const crewSlots = [
+          { x: -16, y: 4 },
+          { x: 16, y: 4 },
+          { x: 0, y: -10 },
+          { x: -24, y: 16 },
+          { x: 24, y: 16 },
+          { x: 0, y: 14 },
+          { x: -10, y: -18 },
+          { x: 10, y: -18 }
+        ];
+        const crewHtml = squad
+          .slice(0, 8)
+          .map((c, idx) => {
+            const pos = crewSlots[idx % crewSlots.length];
+            const deguaSvg = buildFollowingDeGuaCreatureSvg(
+              c.variety,
+              c.leafStage,
+              PETAL_META[c.flowerColor].hex,
+              false
+            );
+            return `<div class="degua-bounce" style="position:absolute;left:calc(50% + ${pos.x}px);top:calc(50% + ${pos.y}px);transform:translate(-50%,-70%) scale(1.18);animation-delay:${(idx * 0.14).toFixed(2)}s;z-index:${20 + pos.y};">${deguaSvg}</div>`;
+          })
+          .join('');
+        const crewMarker = L.divIcon({
+          className: 'pikmin-follow-crew',
+          html: `<div style="position:relative;width:110px;height:100px;transform:rotate(var(--neg-camera-bearing,0deg)) scaleY(1.36) scale(var(--surround-inv-scale,1));transform-origin:50% 60%;pointer-events:none;">${carryBadge}${crewHtml}</div>`,
+          iconSize: [110, 100],
+          iconAnchor: [55, 58]
+        });
+        L.marker([myLat, myLng], { icon: crewMarker, interactive: false, zIndexOffset: 900 }).addTo(pGroup);
+        return;
+      }
       // 計算小隊跟隨向量（永遠緊跟在玩家背後半圓！）
       const yawRad = ((quantizedRelYaw + 180) * Math.PI) / 180;
       const bx = Math.sin(yawRad);
@@ -1937,6 +2035,40 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       });
 
       L.marker([myLat, myLng], { icon: surroundPlayerIcon, interactive: false, zIndexOffset: 900 }).addTo(pGroup);
+    } else if (followCrewMode) {
+      const lead = squad[0];
+      const leadSvg = lead
+        ? buildFollowingDeGuaCreatureSvg(lead.variety, lead.leafStage, PETAL_META[lead.flowerColor].hex, false)
+        : '';
+      const payloadEmoji =
+        followPayload?.phase === 'inbound'
+          ? followPayload.kind === 'gift'
+            ? '🎁'
+            : followPayload.kind === 'fruit'
+              ? followPayload.fruitEmoji || '🍏'
+              : '🪴'
+          : '';
+      const overheadCrewIcon = L.divIcon({
+        className: 'pikmin-overhead-crew',
+        html: `<div style="
+          position: relative;
+          width: 44px;
+          height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transform: rotate(var(--neg-camera-bearing, 0deg));
+          pointer-events: none;
+        ">
+          <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,0.92); border: 2px solid #10B981; box-shadow: 0 3px 10px rgba(0,0,0,0.28); display: flex; align-items: center; justify-content: center;">
+            ${leadSvg}
+          </div>
+          ${payloadEmoji ? `<span style="position:absolute;top:-7px;right:-6px;font-size:16px;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.28));">${payloadEmoji}</span>` : ''}
+        </div>`,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22]
+      });
+      L.marker([myLat, myLng], { icon: overheadCrewIcon, interactive: false, zIndexOffset: 900 }).addTo(pGroup);
     } else {
       const overheadPlayerIcon = L.divIcon({
         className: 'pikmin-overhead-player',
@@ -2005,7 +2137,11 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     activePetalColor,
     squad,
     quantizedRelYaw,
-    quantizedHeading
+    quantizedHeading,
+    followCrewMode,
+    followPayload?.phase,
+    followPayload?.kind,
+    followPayload?.fruitEmoji
   ]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
+  BigFlowerNode,
   calculateCreatureMushroomPower,
   calculateMushroomBattleDuration,
   DecorCategory,
@@ -10,6 +11,8 @@ import {
   MIN_SQUAD_BY_MUSHROOM_SIZE,
   MUSHROOM_CATALOG,
   MushroomNode,
+  PetalColor,
+  PlantedFlowerCell,
   PostcardItem,
   Seedling,
   VARIETY_CATALOG
@@ -21,11 +24,21 @@ import {
   getVisiblePlaceLabels,
   onRealLandmarksUpdated
 } from '../services/realMapService';
+import { WorldDeltaState } from '../services/worldSyncService';
+import {
+  ExpeditionDurationEstimate,
+  formatExpeditionDurationParts,
+  getExpeditionProgressSnapshot,
+  isCategoryColorDecorCompleted,
+  normalizeExpeditionItem
+} from '../services/expeditionService';
 import { DeGuaCharacter } from './DeGuaCharacter';
 import {
   buildAuthenticPikminMushroomSvg,
   buildDetailHeroPikminMushroomSvg
 } from './PikminMushroomVisual';
+import { ExpeditionItemArtwork } from './ExpeditionArtwork';
+import { ExpeditionDetailAndDispatch } from './ExpeditionDetailAndDispatch';
 
 export type OverviewSheetTab = 'lifelog' | 'degua' | 'seedling' | 'expedition' | 'postcard';
 
@@ -64,7 +77,7 @@ function buildGlowMushroomClusterSvg(capHex: string, spotHex: string): string {
 /**
  * 探險頂部區域概覽地圖圖磚（對照參考圖一：乾淨米白陸地、淺藍水系、暖橘省道公路，無雜亂小路名）
  */
-function createRegionalOverviewTileLayer(): L.GridLayer {
+export function createRegionalOverviewTileLayer(): L.GridLayer {
   const OverviewGrid = L.GridLayer.extend({
     createTile: function (coords: L.Coords, done: L.DoneCallback) {
       const tile = document.createElement('canvas');
@@ -199,9 +212,20 @@ interface ExpeditionsModalProps {
   creatures: DeGuaCreature[];
   seedlings?: Seedling[];
   postcards?: PostcardItem[];
+  flowers?: Record<string, PlantedFlowerCell>;
+  worldDelta?: WorldDeltaState;
+  bigFlowers?: BigFlowerNode[];
+  isPlanting?: boolean;
+  activePetalColor?: PetalColor;
   initialTab?: OverviewSheetTab;
+  initialSelectedExpeditionId?: string | null;
   onSelectMushroom: (mushroom: MushroomNode) => void;
-  onDispatchExpedition: (expId: string) => void;
+  onDispatchExpedition: (
+    expId: string,
+    assignedIds: string[],
+    estimate: ExpeditionDurationEstimate
+  ) => void;
+  onCancelExpedition: (expId: string) => void;
   onClaimCompletedExpedition: (expId: string) => void;
   onOpenDecorModal?: () => void;
   onOpenPlanterModal?: () => void;
@@ -219,9 +243,16 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
   creatures,
   seedlings = [],
   postcards = [],
+  flowers = {},
+  worldDelta,
+  bigFlowers = [],
+  isPlanting = false,
+  activePetalColor = 'white',
   initialTab = 'expedition',
+  initialSelectedExpeditionId = null,
   onSelectMushroom,
   onDispatchExpedition,
+  onCancelExpedition,
   onClaimCompletedExpedition,
   onOpenDecorModal,
   onOpenPlanterModal,
@@ -235,6 +266,21 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
   const [activeMushroomIndex, setActiveMushroomIndex] = useState<number>(0);
   const [scrollProgressPct, setScrollProgressPct] = useState<number>(12);
   const [landmarkTick, setLandmarkTick] = useState<number>(0);
+  const [inspectingExpId, setInspectingExpId] = useState<string | null>(initialSelectedExpeditionId);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    if (initialSelectedExpeditionId) {
+      setInspectingExpId(initialSelectedExpeditionId);
+    }
+  }, [initialSelectedExpeditionId]);
+
+  useEffect(() => {
+    const hasActive = expeditions.some((e) => e.status === 'active');
+    if (!hasActive) return;
+    const tid = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(tid);
+  }, [expeditions]);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -299,70 +345,26 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
     return () => stopCarouselInertia();
   }, []);
 
-  // 確保「瓜糰和水果」區同時包含禮物 (gift)、瓜糰 (seedling) 與水果 (fruit)，並使用真實地標名稱
+  // 保留真實地標名稱與完整皮克敏探險屬性，確保每一筆都可點擊查看／派出／追蹤／中止／收成
   const enrichedExpeditions = useMemo(() => {
     const used = new Set<string>();
-    const lm1 = getNearestRealLandmarkInfo(myLat + 0.0012, myLng - 0.0015, 1, used).name;
-    const lm2 = getNearestRealLandmarkInfo(myLat - 0.0018, myLng + 0.0012, 2, used).name;
-    const lm3 = getNearestRealLandmarkInfo(myLat + 0.0022, myLng + 0.0018, 3, used).name;
+    return expeditions.map((e, i) => {
+      const normalized = normalizeExpeditionItem(e, creatures, nowMs);
+      const lm = getNearestRealLandmarkInfo(normalized.lat, normalized.lng, i + 10, used);
+      return {
+        ...normalized,
+        placeName:
+          normalized.placeName && !normalized.placeName.includes('附近')
+            ? normalized.placeName
+            : normalized.placeName || lm.name
+      };
+    });
+  }, [expeditions, creatures, landmarkTick]);
 
-    const hasGift = expeditions.some((e) => e.kind === 'gift');
-    const list: ExpeditionItem[] = expeditions.map((e, i) => ({
-      ...e,
-      placeName: getNearestRealLandmarkInfo(e.lat, e.lng, i + 10, used).name
-    }));
-
-    if (!hasGift) {
-      list.unshift(
-        {
-          id: 'exp_gift_demo_1',
-          kind: 'gift',
-          title: '好友明信片與飾品禮物',
-          placeName: lm1,
-          lat: myLat - 0.0085,
-          lng: myLng - 0.012,
-          distanceMeters: 180,
-          requiredStrength: 1,
-          targetCreatureId: creatures[0]?.id,
-          status: 'available',
-          assignedCreatureIds: []
-        },
-        {
-          id: 'exp_gift_demo_2',
-          kind: 'gift',
-          title: '滿4心專屬飾品禮物',
-          placeName: lm2,
-          lat: myLat - 0.015,
-          lng: myLng - 0.022,
-          distanceMeters: 240,
-          requiredStrength: 1,
-          targetCreatureId: creatures[1]?.id,
-          status: 'available',
-          assignedCreatureIds: []
-        }
-      );
-    }
-
-    if (list.filter((e) => e.kind === 'seedling').length < 2) {
-      list.push({
-        id: 'exp_seed_demo_3',
-        kind: 'seedling',
-        title: '黃色瓜糰',
-        placeName: lm3,
-        lat: myLat - 0.019,
-        lng: myLng - 0.026,
-        distanceMeters: 135,
-        requiredStrength: 1,
-        seedlingVariety: 'yellow',
-        seedlingDecor: 'park',
-        seedlingIsHuge: false,
-        status: 'available',
-        assignedCreatureIds: []
-      });
-    }
-
-    return list;
-  }, [expeditions, myLat, myLng, creatures, landmarkTick]);
+  const inspectingExp = useMemo(
+    () => (inspectingExpId ? enrichedExpeditions.find((e) => e.id === inspectingExpId) || null : null),
+    [inspectingExpId, enrichedExpeditions]
+  );
 
   // 確保每一顆蘑菇在圖資載入完成後，100% 即時擁有不重複的真實地標名稱與真實地標實景照片 (photoUrl)
   const enrichedMushrooms = useMemo(() => {
@@ -464,25 +466,38 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
       L.marker([pl.lat, pl.lng], { icon: lblIcon, interactive: false }).addTo(group);
     });
 
-    // 3. 地圖上的水果 (🍑) 與瓜糰盆 (🍠) 探險點位圖示（對照圖一地圖中央的桃子與盆栽）
-    const mapExpPins = [
-      { lat: myLat - 0.008, lng: myLng - 0.011, html: '🍑<span style="font-size:18px;margin-left:-4px;">🪴</span>' },
-      { lat: myLat - 0.019, lng: myLng - 0.025, html: '🍑<span style="font-size:19px;margin-left:-5px;">🍯</span>' }
-    ];
-    mapExpPins.forEach((pin) => {
-      const pIcon = L.divIcon({
-        className: 'exp-map-pin',
-        html: `<div style="
-          font-size: 24px;
-          filter: drop-shadow(0 3px 5px rgba(0,0,0,0.25));
-          transform: translate(-50%, -50%);
-          white-space: nowrap;
-          pointer-events: none;
-        ">${pin.html}</div>`,
-        iconSize: [44, 32],
-        iconAnchor: [22, 16]
-      });
-      L.marker([pin.lat, pin.lng], { icon: pIcon, interactive: false }).addTo(group);
+    // 3. 地圖上即時繪製所有待派出與行進中的探險物品與小隊點位
+    enrichedExpeditions.forEach((exp) => {
+      const emoji = exp.kind === 'gift' ? '🎁' : exp.kind === 'fruit' ? exp.fruitEmoji || '🍏' : '🪴';
+      if (exp.status === 'active') {
+        const snap = getExpeditionProgressSnapshot(exp, myLat, myLng, nowMs);
+        const pIcon = L.divIcon({
+          className: 'exp-map-pin',
+          html: `<div style="
+            display:flex;align-items:center;gap:2px;
+            background:rgba(255,255,255,0.92);border-radius:99px;padding:2px 6px;
+            border:1.5px solid #10B981;box-shadow:0 3px 6px rgba(0,0,0,0.22);
+            transform:translate(-50%,-50%);font-size:16px;pointer-events:none;
+          "><span>🍠</span><span>${emoji}</span></div>`,
+          iconSize: [44, 28],
+          iconAnchor: [22, 14]
+        });
+        L.marker([snap.currentLat, snap.currentLng], { icon: pIcon, interactive: false }).addTo(group);
+      } else {
+        const pIcon = L.divIcon({
+          className: 'exp-map-pin',
+          html: `<div style="
+            font-size: 22px;
+            filter: drop-shadow(0 3px 5px rgba(0,0,0,0.25));
+            transform: translate(-50%, -50%);
+            white-space: nowrap;
+            pointer-events: none;
+          ">${emoji}</div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+        L.marker([exp.lat, exp.lng], { icon: pIcon, interactive: false }).addTo(group);
+      }
     });
 
     // 4. 玩家目前所在位置的「黃色花叢 ＋ 藍白圓點定位標記」（對照圖一右上角臺北市旁的藍色定位圓點）
@@ -521,7 +536,7 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
       iconAnchor: [29, 23]
     });
     L.marker([myLat, myLng], { icon: myPinIcon, interactive: false }).addTo(group);
-  }, [myLat, myLng]);
+  }, [myLat, myLng, enrichedExpeditions]);
 
   // 處理底部面板往上拉變大 / 往下拉縮小的手勢
   const handleSheetPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -1105,63 +1120,171 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
                 {enrichedExpeditions.map((exp) => {
                   const isGift = exp.kind === 'gift';
                   const isFruit = exp.kind === 'fruit';
-                  const decorIcon =
-                    exp.seedlingDecor ? DECOR_CATALOG[exp.seedlingDecor].icon : '🪑';
+                  const snap =
+                    exp.status !== 'available'
+                      ? getExpeditionProgressSnapshot(exp, myLat, myLng, nowMs)
+                      : null;
+                  const isDone =
+                    exp.status === 'completed' || (snap !== null && snap.phase === 'completed');
+                  const isActive = exp.status === 'active' && !isDone;
+                  const leadCreature =
+                    exp.assignedCreatureIds.length > 0
+                      ? creatures.find((c) => c.id === exp.assignedCreatureIds[0])
+                      : exp.targetCreatureId
+                        ? creatures.find((c) => c.id === exp.targetCreatureId)
+                        : undefined;
+                  const isDecorCompleted =
+                    !isFruit && exp.seedlingDecor
+                      ? isCategoryColorDecorCompleted(
+                          creatures,
+                          exp.seedlingDecor,
+                          exp.seedlingVariety,
+                          exp.seedlingIsHuge
+                        )
+                      : false;
+                  const timeParts = snap ? formatExpeditionDurationParts(snap.remainingMs) : null;
+
+                  if (isActive || isDone) {
+                    const pct = snap ? Math.round(snap.overallPct * 100) : 100;
+                    return (
+                      <div
+                        key={exp.id}
+                        onClick={() => {
+                          if (isDone) {
+                            onClaimCompletedExpedition(exp.id);
+                          } else {
+                            setInspectingExpId(exp.id);
+                          }
+                        }}
+                        style={{
+                          background: '#FFFFFF',
+                          borderRadius: 16,
+                          padding: '10px 8px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          border: isDone ? '2px solid #10B981' : '1.5px solid #F1F5F9',
+                          boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
+                        }}
+                      >
+                        <div style={{ fontSize: 13.5, fontWeight: 900, color: isDone ? '#059669' : '#1E293B', lineHeight: 1.2 }}>
+                          {isDone ? (
+                            '回來了！'
+                          ) : timeParts && timeParts.hours > 0 ? (
+                            <>
+                              {timeParts.hours}
+                              <span style={{ fontSize: 9.5, fontWeight: 700, margin: '0 1px' }}>小時</span>
+                              {timeParts.minutes}
+                              <span style={{ fontSize: 9.5, fontWeight: 700, marginLeft: 1 }}>分</span>
+                            </>
+                          ) : (
+                            <>
+                              {timeParts?.minutes || 1}
+                              <span style={{ fontSize: 9.5, fontWeight: 700, marginLeft: 1 }}>分</span>
+                            </>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            width: '92%',
+                            height: 3.5,
+                            borderRadius: 99,
+                            background: '#E2E8F0',
+                            margin: '6px 0 8px',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: '100%',
+                              background: isDone ? '#10B981' : '#EF4444'
+                            }}
+                          />
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 4,
+                            height: 52,
+                            marginBottom: 4
+                          }}
+                        >
+                          {leadCreature && (
+                            <DeGuaCharacter
+                              variety={leadCreature.variety}
+                              decor={leadCreature.decor}
+                              leafStage={leadCreature.leafStage}
+                              flowerColor={leadCreature.flowerColor}
+                              showDecor={leadCreature.hasDecor}
+                              size={42}
+                              isBouncing={true}
+                            />
+                          )}
+                          <ExpeditionItemArtwork
+                            exp={exp}
+                            isDecorCompleted={isDecorCompleted}
+                            size={44}
+                            showDecorBadge={false}
+                          />
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            color: isDone ? '#059669' : '#64748B',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            maxWidth: '100%'
+                          }}
+                        >
+                          {isDone ? '點此去花園收下' : exp.placeName}
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div
                       key={exp.id}
-                      onClick={() => {
-                        if (exp.status === 'available') {
-                          onDispatchExpedition(exp.id);
-                        } else {
-                          onClaimCompletedExpedition(exp.id);
-                        }
-                      }}
+                      onClick={() => setInspectingExpId(exp.id)}
                       style={{
                         background: '#FFFFFF',
-                        borderRadius: 18,
-                        padding: '12px 8px 10px',
+                        borderRadius: 16,
+                        padding: '10px 6px 9px',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
                         textAlign: 'center',
                         position: 'relative',
                         cursor: 'pointer',
-                        border:
-                          exp.status !== 'available'
-                            ? '2px solid #10B981'
-                            : '1px solid #F1F5F9',
+                        border: '1px solid #F1F5F9',
                         boxShadow: '0 2px 10px rgba(0,0,0,0.04)'
                       }}
                     >
-                      {/* 右上角淡灰色飾品分類背景圖示（完全對照圖一禮物盒與盆栽右上角的淡灰長椅/大樹圖示） */}
                       <div
                         style={{
-                          position: 'absolute',
-                          top: 8,
-                          right: 10,
-                          fontSize: 22,
-                          opacity: 0.22,
-                          filter: 'grayscale(100%)'
-                        }}
-                      >
-                        {decorIcon}
-                      </div>
-
-                      {/* 主體立體圖示：🎁 紅絲帶白禮物盒 ｜ 🍠 圓甕嫩芽瓜糰 ｜ 🍑 飽滿水果 */}
-                      <div
-                        style={{
-                          height: 64,
+                          height: 62,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: 44,
-                          filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.16))',
-                          marginBottom: 6
+                          marginBottom: 5
                         }}
                       >
-                        {isGift ? '🎁' : isFruit ? exp.fruitEmoji || '🍑' : '🪴'}
+                        <ExpeditionItemArtwork
+                          exp={exp}
+                          isDecorCompleted={isDecorCompleted}
+                          size={56}
+                          showDecorBadge={!isFruit}
+                        />
                       </div>
 
                       <div
@@ -1170,16 +1293,10 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
                           fontWeight: 900,
                           color: '#1E293B',
                           lineHeight: 1.25,
-                          marginBottom: 3
+                          marginBottom: 2
                         }}
                       >
-                        {isGift
-                          ? '飾品禮物'
-                          : isFruit
-                          ? exp.title
-                          : exp.title === '野生花苗'
-                          ? '野生瓜糰'
-                          : exp.title}
+                        {isGift ? `${exp.title.replace(/的飾品禮物|專屬飾品禮物/g, '') || '專屬禮品'}` : exp.title}
                       </div>
 
                       <div
@@ -1190,25 +1307,11 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          maxWidth: '100%',
-                          marginBottom: 6
+                          maxWidth: '100%'
                         }}
                       >
-                        📍 {exp.placeName}
+                        {exp.placeName}
                       </div>
-
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 900,
-                          padding: '3px 10px',
-                          borderRadius: 99,
-                          background: exp.status === 'available' ? '#ECFDF5' : '#FEF3C7',
-                          color: exp.status === 'available' ? '#059669' : '#D97706'
-                        }}
-                      >
-                        {exp.status === 'available' ? `派出 (${exp.distanceMeters}m)` : '點此收下'}
-                      </span>
                     </div>
                   );
                 })}
@@ -1442,6 +1545,29 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
           <span>飾品一覽</span>
         </button>
       </div>
+
+      {/* 點選某項待出發／進行中探險後的完整圖卡、隊伍選擇、GO 目送與實景追蹤流程 */}
+      {inspectingExp && (
+        <ExpeditionDetailAndDispatch
+          expedition={inspectingExp}
+          creatures={creatures}
+          myLat={myLat}
+          myLng={myLng}
+          isPlanting={isPlanting}
+          activePetalColor={activePetalColor}
+          flowers={flowers}
+          worldDelta={worldDelta}
+          bigFlowers={bigFlowers}
+          mushrooms={mushrooms}
+          onDispatchCommit={onDispatchExpedition}
+          onCancelExpedition={onCancelExpedition}
+          onClaimCompletedExpedition={(expId) => {
+            setInspectingExpId(null);
+            onClaimCompletedExpedition(expId);
+          }}
+          onClose={() => setInspectingExpId(null)}
+        />
+      )}
     </div>
   );
 };
