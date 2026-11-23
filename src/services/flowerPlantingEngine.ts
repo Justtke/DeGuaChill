@@ -12,7 +12,7 @@ export const FINE_CELL_LNG_DEG = 0.0000496;
 export const CELL_COOLDOWN_MS = 5 * 60 * 1000; // 5 分鐘冷卻
 export const FLOWERS_PER_COIN = 250; // 單次連續種花每 250 朵賺 1 金幣
 export const MAX_DAILY_COINS = 60; // 每日種花金幣上限 60 枚
-export const MAX_PLANTING_SPEED_KMH = 24; // 超過約 24 km/h 暫停寫入花朵
+export const MAX_PLANTING_SPEED_KMH = 20; // 超過約 20 km/h 暫停寫入花朵
 export const BIG_FLOWER_PLANT_RADIUS_M = 40; // 大花半徑 40 公尺內貢獻花朵數
 
 export interface SquadPlantingFootprint {
@@ -29,12 +29,12 @@ export interface CellCooldownRecord {
 }
 
 /**
- * 依據官方《Pikmin Bloom》隊伍人數決定播種矩形面積與花瓣消耗速率：
- * - 1–9 隻：2×1 (2 格), 每 30 秒 1 片 (2 片/分)
- * - 10–19 隻：3×2 (6 格), 每 20 秒 1 片 (3 片/分)
- * - 20–29 隻：4×3 (12 格), 每 15 秒 1 片 (4 片/分)
- * - 30–39 隻：5×4 (20 格), 每 12 秒 1 片 (5 片/分)
- * - 40+ 隻：6×5 (30 格), 每 10 秒 1 片 (6 片/分)
+ * 依據官方《Pikmin Bloom》隊伍顆數決定播種矩形面積與花瓣消耗速率：
+ * - 1–9 顆：2×1 (2 格), 每 30 秒 1 片 (2 片/分)
+ * - 10–19 顆：3×2 (6 格), 每 20 秒 1 片 (3 片/分)
+ * - 20–29 顆：4×3 (12 格), 每 15 秒 1 片 (4 片/分)
+ * - 30–39 顆：5×4 (20 格), 每 12 秒 1 片 (5 片/分)
+ * - 40+ 顆：6×5 (30 格), 每 10 秒 1 片 (6 片/分)
  */
 export function getPlantingFootprintForSquad(squadCount: number): SquadPlantingFootprint {
   if (squadCount >= 40) {

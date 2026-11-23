@@ -8,7 +8,8 @@ export const TWO_HOURS_MS = 2 * 3600 * 1000;
 
 export const SQUAD_LEAF_TO_BUD_STEPS = 1800; // 1,700 ~ 2,000 步
 export const ALL_CREATURES_BUD_DAILY_STEPS = 5200; // 5,000 ~ 5,500 步
-export const BARE_TO_LEAF_STEPS = 2000; // 光禿禿走 ~2,000 步長回葉子
+export const BARE_TO_LEAF_STEPS = 1800; // 6 小時倒數中，每走 1 步扣 12 秒，走滿約 1,800 步即長回葉子
+export const BARE_STEP_BONUS_MS = 12_000;
 export const MAX_FEED_SLOTS = 6; // 0/6 ~ 6/6
 
 export interface DailyLifecycleState {
@@ -219,12 +220,19 @@ export function applyWalkingStepsToLifecycle(
     !nextDaily.allBudTriggered && nextDaily.dailySteps >= ALL_CREATURES_BUD_DAILY_STEPS;
 
   nextCreatures = nextCreatures.map((c) => {
-    if (c.leafStage === 'bare' && c.inSquad && c.busyState === 'free') {
+    const stepWalkDelta = c.inSquad && c.busyState === 'free' ? deltaSteps : 0;
+    const nextTotalWalked = (c.stepsWalked ?? 0) + stepWalkDelta;
+
+    // 禿頭恢復：不論是否在隊伍或待機，白天走每 1 步皆可使 6 小時冷卻縮短 12 秒（合計約 1,800 步長回葉子）
+    if (c.leafStage === 'bare') {
       const nextBareSteps = (c.bareWalkSteps ?? 0) + deltaSteps;
-      if (nextBareSteps >= BARE_TO_LEAF_STEPS) {
+      const elapsedBareMs = c.bareAt ? Math.max(0, nowMs - c.bareAt) : 0;
+      const effectiveBareMs = elapsedBareMs + nextBareSteps * BARE_STEP_BONUS_MS;
+      if (effectiveBareMs >= SIX_HOURS_MS || nextBareSteps >= BARE_TO_LEAF_STEPS) {
         bareRecoveredCount++;
         return {
           ...c,
+          stepsWalked: nextTotalWalked,
           leafStage: shouldTriggerAllBud ? ('bud' as const) : ('leaf' as const),
           feedCount: 0,
           lastFedAt: null,
@@ -234,7 +242,11 @@ export function applyWalkingStepsToLifecycle(
           budBonusPending: false
         };
       }
-      return { ...c, bareWalkSteps: nextBareSteps };
+      return {
+        ...c,
+        stepsWalked: nextTotalWalked,
+        bareWalkSteps: nextBareSteps
+      };
     }
 
     if (c.leafStage === 'leaf') {
@@ -242,6 +254,7 @@ export function applyWalkingStepsToLifecycle(
         squadBudCount++;
         return {
           ...c,
+          stepsWalked: nextTotalWalked,
           leafStage: 'bud' as const,
           squadWalkSteps: 0
         };
@@ -252,15 +265,20 @@ export function applyWalkingStepsToLifecycle(
           squadBudCount++;
           return {
             ...c,
+            stepsWalked: nextTotalWalked,
             leafStage: 'bud' as const,
             squadWalkSteps: nextWalkSteps
           };
         }
-        return { ...c, squadWalkSteps: nextWalkSteps };
+        return {
+          ...c,
+          stepsWalked: nextTotalWalked,
+          squadWalkSteps: nextWalkSteps
+        };
       }
     }
 
-    return c;
+    return stepWalkDelta > 0 ? { ...c, stepsWalked: nextTotalWalked } : c;
   });
 
   if (shouldTriggerAllBud) {
@@ -436,7 +454,8 @@ export function finalizeExpeditionCreatures(
   creatures: DeGuaCreature[],
   assignedIds: string[],
   kind: 'seedling' | 'fruit' | 'gift',
-  targetCreatureId?: string
+  targetCreatureId?: string,
+  options?: { isRareGift?: boolean; rareDecorSetId?: string }
 ): {
   creatures: DeGuaCreature[];
   giftReadyCreatures: DeGuaCreature[];
@@ -453,6 +472,8 @@ export function finalizeExpeditionCreatures(
       return {
         ...c,
         hasDecor: true,
+        isRareDecor: options?.isRareGift ? true : c.isRareDecor,
+        decorSetId: options?.rareDecorSetId || c.decorSetId,
         giftExpeditionCreated: true,
         busyState: 'free' as const
       };

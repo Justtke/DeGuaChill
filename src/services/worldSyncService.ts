@@ -386,6 +386,8 @@ export async function triggerDetectorScan(
           decor = 'clothing';
         } else if (tags.shop === 'books' || tags.amenity === 'library' || /書店|圖書館|誠品/i.test(name)) {
           decor = 'book';
+        } else if (tags.leisure === 'stadium' || tags.leisure === 'sports_centre' || /體育館|運動中心|巨蛋|棒球場|stadium/i.test(name)) {
+          decor = 'stadium';
         } else if (tags.amenity === 'cinema' || /影城|電影|威秀|國賓/i.test(name)) {
           decor = 'cinema';
         } else if (tags.tourism === 'museum' || /美術館|博物館|展覽/i.test(name)) {

@@ -374,7 +374,7 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
 
   const handleToggleSelectCreature = (c: DeGuaCreature) => {
     if (c.busyState !== 'free') {
-      showLimitToast('這隻地瓜球正在忙其他任務喔。');
+      showLimitToast('這顆地瓜球正在忙其他任務喔。');
       return;
     }
     if (expedition.kind === 'gift') {
@@ -389,7 +389,7 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
         return prev.filter((id) => id !== c.id);
       }
       if (prev.length >= maxCarriers) {
-        showLimitToast(`這次探險最多可以派出${maxCarriers}隻地瓜球。`);
+        showLimitToast(`這次探險最多可以派出${maxCarriers}顆地瓜球。`);
         return prev;
       }
       return [...prev, c.id];
@@ -859,7 +859,7 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
             <div style={{ fontSize: 12.5, fontWeight: 700, color: '#334155', marginTop: 6 }}>
               {expedition.kind === 'gift'
                 ? `專屬紀念禮物只能由 ${targetGiftCreature?.name || '主角'} 親自前往 (1/1)`
-                : `可以選擇最多${maxCarriers}隻地瓜球 (${selectedIds.length}/${maxCarriers})`}
+                : `可以選擇最多${maxCarriers}顆地瓜球 (${selectedIds.length}/${maxCarriers})`}
             </div>
             {liveEstimate.allWinged && selectedCreatures.length > 0 && (
               <div style={{ fontSize: 11, fontWeight: 800, color: '#DB2777', marginTop: 2 }}>
@@ -1401,7 +1401,7 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
 
               <div style={{ fontSize: 13.5, fontWeight: 700, color: '#475569', marginBottom: 10 }}>
                 {expedition.kind === 'gift'
-                  ? `讓 ${targetGiftCreature?.name || '這隻地瓜球'} 回出生地領取專屬飾品！`
+                  ? `讓 ${targetGiftCreature?.name || '這顆地瓜球'} 回出生地領取專屬飾品！`
                   : '派地瓜球出去探險吧！'}
               </div>
 

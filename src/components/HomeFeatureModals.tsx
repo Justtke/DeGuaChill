@@ -16,6 +16,13 @@ import {
 import { DeGuaCharacter } from './DeGuaCharacter';
 import { buildAuthenticPikminMushroomSvg } from './PikminMushroomVisual';
 import { WalkingPlayerAvatar } from './WalkingPlayerAvatar';
+import {
+  getEligibleCreaturesForRareGift,
+  getRarePointsRequiredForNextLevel,
+  isCategoryRareEligible,
+  isRegularCategoryCatalogComplete,
+  RareDecorProgressMap
+} from '../services/rareDecorService';
 
 const ALL_VARIETIES: DeGuaVariety[] = ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'];
 
@@ -53,12 +60,18 @@ const ModalHeader: React.FC<{ title: string; subtitle?: string; onClose: () => v
   </>
 );
 
-/* ==================== 1. 🎖️ 飾品一覽 (Decor Collection Modal) ==================== */
+/* ==================== 1. 🎖️ 飾品一覽 (Decor Collection Modal + 稀有飾品點數升級制) ==================== */
 export const DecorCollectionModal: React.FC<{
   creatures: DeGuaCreature[];
+  rareProgressMap?: RareDecorProgressMap;
+  onAssignRareGift?: (category: DecorCategory, creature: DeGuaCreature) => void;
   onClose: () => void;
-}> = ({ creatures, onClose }) => {
+}> = ({ creatures, rareProgressMap = {}, onAssignRareGift, onClose }) => {
+  const [pickingRareCategory, setPickingRareCategory] = useState<DecorCategory | null>(null);
   const decoratedCreatures = creatures.filter((c) => c.hasDecor);
+  const eligibleCandidates = pickingRareCategory
+    ? getEligibleCreaturesForRareGift(creatures, pickingRareCategory)
+    : [];
 
   return (
     <div
@@ -88,7 +101,7 @@ export const DecorCollectionModal: React.FC<{
       >
         <ModalHeader
           title="🎖️ 飾品一覽"
-          subtitle={`已收集 ${decoratedCreatures.length} 隻飾品地瓜球`}
+          subtitle={`已收集 ${decoratedCreatures.length} 顆飾品地瓜球`}
           onClose={onClose}
         />
 
@@ -96,12 +109,18 @@ export const DecorCollectionModal: React.FC<{
           {ALL_DECOR_CATEGORIES.map((decorKey) => {
             const dMeta = DECOR_CATALOG[decorKey];
             const sets = DECOR_SUBSETS_CATALOG[decorKey] || [];
+            const isRareCat = isCategoryRareEligible(decorKey);
+            const isRegularComplete = isRareCat && isRegularCategoryCatalogComplete(creatures, decorKey);
+            const rProg = rareProgressMap[decorKey] || { level: 1, points: 0, pendingGifts: 0 };
+            const reqPts = getRarePointsRequiredForNextLevel(rProg.level);
+            const pct = Math.min(100, Math.round((rProg.points / Math.max(1, reqPts)) * 100));
+
             return (
               <div
                 key={decorKey}
                 style={{
                   background: '#FFFFFF',
-                  border: '2px solid #FDE68A',
+                  border: isRegularComplete ? '2px solid #F59E0B' : '2px solid #FDE68A',
                   borderRadius: 22,
                   padding: '12px 14px'
                 }}
@@ -114,6 +133,57 @@ export const DecorCollectionModal: React.FC<{
                     {sets.length} 系列
                   </div>
                 </div>
+
+                {/* 集齊該類別全數一般飾品後開啟稀有飾品進度條（點數升級制） */}
+                {isRegularComplete && (
+                  <div
+                    style={{
+                      background: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)',
+                      border: '1.5px solid #F59E0B',
+                      borderRadius: 14,
+                      padding: '9px 12px',
+                      marginBottom: 10
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                      <div style={{ fontSize: 12, fontWeight: 900, color: '#B45309' }}>
+                        ✨ 稀有飾品 Lv.{rProg.level}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#92400E' }}>
+                        {rProg.points} / {reqPts} 點
+                      </div>
+                    </div>
+                    <div style={{ width: '100%', height: 7, borderRadius: 99, background: '#FDE68A', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${pct}%`,
+                          height: '100%',
+                          background: 'linear-gradient(90deg, #F59E0B, #EA580C)',
+                          borderRadius: 99
+                        }}
+                      />
+                    </div>
+                    {rProg.pendingGifts > 0 && onAssignRareGift && (
+                      <button
+                        onClick={() => setPickingRareCategory(decorKey)}
+                        style={{
+                          marginTop: 8,
+                          width: '100%',
+                          border: 'none',
+                          borderRadius: 99,
+                          padding: '7px 12px',
+                          background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                          color: '#FFFFFF',
+                          fontSize: 12,
+                          fontWeight: 900,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🎁 可領取稀有飾品 ({rProg.pendingGifts} 次) — 點此指派地瓜球
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {sets.map((subSet) => {
@@ -129,14 +199,20 @@ export const DecorCollectionModal: React.FC<{
                               (c) =>
                                 c.decor === decorKey &&
                                 c.variety === v &&
-                                (!c.decorSetId || c.decorSetId === subSet.setId || !subSet.isRare)
+                                (subSet.isRare
+                                  ? Boolean(c.isRareDecor)
+                                  : !c.decorSetId || c.decorSetId === subSet.setId)
                             );
                             return (
                               <div
                                 key={`${subSet.setId}_${v}`}
                                 style={{
-                                  background: unlocked ? '#FEF3C7' : '#F8FAFC',
-                                  border: unlocked ? '1.5px solid #F59E0B' : '1px dashed #CBD5E1',
+                                  background: unlocked ? (subSet.isRare ? '#FEF3C7' : '#ECFDF5') : '#F8FAFC',
+                                  border: unlocked
+                                    ? subSet.isRare
+                                      ? '1.5px solid #F59E0B'
+                                      : '1.5px solid #10B981'
+                                    : '1px dashed #CBD5E1',
                                   borderRadius: 14,
                                   padding: '6px 2px',
                                   display: 'flex',
@@ -171,6 +247,79 @@ export const DecorCollectionModal: React.FC<{
           })}
         </div>
       </div>
+
+      {/* 指派同類別一般飾品地瓜球領取稀有禮物選單 */}
+      {pickingRareCategory && (
+        <div
+          onClick={() => setPickingRareCategory(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1120,
+            background: 'rgba(15,23,42,0.58)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 360,
+              maxHeight: '75lvh',
+              background: '#FFFFFF',
+              borderRadius: 24,
+              padding: 18,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#0F172A' }}>
+              選擇要派出領取【{DECOR_CATALOG[pickingRareCategory].placeCategory}】稀有飾品的地瓜球
+            </div>
+            <div style={{ overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {eligibleCandidates.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    onAssignRareGift?.(pickingRareCategory, c);
+                    setPickingRareCategory(null);
+                  }}
+                  style={{
+                    background: '#FFFBEB',
+                    border: '1.5px solid #F59E0B',
+                    borderRadius: 14,
+                    padding: 8,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 4,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <DeGuaCharacter
+                    variety={c.variety}
+                    decor={c.decor}
+                    leafStage={c.leafStage}
+                    flowerColor={c.flowerColor}
+                    showDecor={true}
+                    size={44}
+                  />
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#1E293B' }}>{c.name}</div>
+                </button>
+              ))}
+              {eligibleCandidates.length === 0 && (
+                <div style={{ gridColumn: '1 / -1', fontSize: 12.5, color: '#64748B', padding: 14, textAlign: 'center' }}>
+                  目前沒有空閒且穿戴該分類一般飾品的地瓜球。
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1395,14 +1544,14 @@ export const MushroomGuideModal: React.FC<{ onClose: () => void }> = ({ onClose 
           }}
         >
           <div style={{ fontSize: 13.5, fontWeight: 900, color: '#0F172A', marginBottom: 6 }}>
-            🍄 一、蘑菇分類與最低上場隻數
+            🍄 一、蘑菇分類與最低上場顆數
           </div>
           <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.65, fontWeight: 700 }}>
             • <b>顏色菇（乾爽的菇）</b>：分為 <b>小 / 一般 / 大</b><br />
             • <b>元素菇（外圍多一層物質）</b>：分為 <b>一般 / 大</b>，僅限對應屬性地瓜球上場<br />
             • <b>最低所需上場數量</b>：大 →{' '}
-            {MIN_SQUAD_BY_MUSHROOM_SIZE['大']} 隻 ／ 一般 →{' '}
-            {MIN_SQUAD_BY_MUSHROOM_SIZE['一般']} 隻 ／ 小 → {MIN_SQUAD_BY_MUSHROOM_SIZE['小']} 隻
+            {MIN_SQUAD_BY_MUSHROOM_SIZE['大']} 顆 ／ 一般 →{' '}
+            {MIN_SQUAD_BY_MUSHROOM_SIZE['一般']} 顆 ／ 小 → {MIN_SQUAD_BY_MUSHROOM_SIZE['小']} 顆
           </div>
         </div>
 

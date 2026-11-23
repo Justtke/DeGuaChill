@@ -6,8 +6,12 @@ import {
   calculateMushroomBattleDuration,
   DecorCategory,
   DECOR_CATALOG,
+  DEFAULT_CREATURE_STORAGE_CAP,
   DeGuaCreature,
+  DeGuaVariety,
   ExpeditionItem,
+  getMushroomSquadLimitForLevel,
+  getSquadLimitForLevel,
   MIN_SQUAD_BY_MUSHROOM_SIZE,
   MUSHROOM_CATALOG,
   MushroomNode,
@@ -27,6 +31,7 @@ import {
 import { WorldDeltaState } from '../services/worldSyncService';
 import {
   ExpeditionDurationEstimate,
+  formatDistrictOnlyPlaceName,
   formatExpeditionDurationParts,
   getExpeditionProgressSnapshot,
   isCategoryColorDecorCompleted,
@@ -37,8 +42,9 @@ import {
   buildAuthenticPikminMushroomSvg,
   buildDetailHeroPikminMushroomSvg
 } from './PikminMushroomVisual';
-import { ExpeditionItemArtwork } from './ExpeditionArtwork';
+import { CreatureHeartsRow, ExpeditionItemArtwork } from './ExpeditionArtwork';
 import { ExpeditionDetailAndDispatch } from './ExpeditionDetailAndDispatch';
+import { CreatureDetailModal } from './CreatureDetailModal';
 
 export type OverviewSheetTab = 'lifelog' | 'degua' | 'seedling' | 'expedition' | 'postcard';
 
@@ -205,6 +211,7 @@ export function createRegionalOverviewTileLayer(): L.GridLayer {
 interface ExpeditionsModalProps {
   myLat: number;
   myLng: number;
+  playerLevel?: number;
   todaySteps?: number;
   dailyMoods?: Record<number, string>;
   expeditions: ExpeditionItem[];
@@ -227,15 +234,22 @@ interface ExpeditionsModalProps {
   ) => void;
   onCancelExpedition: (expId: string) => void;
   onClaimCompletedExpedition: (expId: string) => void;
+  onToggleInSquad?: (creatureId: string) => void;
+  onBatchUpdateSquad?: (creatureIds: string[], inSquad: boolean) => void;
+  onToggleFavorite?: (creatureId: string) => void;
+  onRenameCreature?: (creatureId: string, newName: string) => void;
+  onReleaseCreatures?: (creatureIds: string[]) => void;
   onOpenDecorModal?: () => void;
   onOpenPlanterModal?: () => void;
   onOpenGardenModal?: () => void;
+  onOpenArCamera?: () => void;
   onClose: () => void;
 }
 
 export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
   myLat,
   myLng,
+  playerLevel = 68,
   todaySteps = 3953,
   dailyMoods = {},
   expeditions,
@@ -254,9 +268,15 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
   onDispatchExpedition,
   onCancelExpedition,
   onClaimCompletedExpedition,
+  onToggleInSquad,
+  onBatchUpdateSquad,
+  onToggleFavorite,
+  onRenameCreature,
+  onReleaseCreatures,
   onOpenDecorModal,
   onOpenPlanterModal,
   onOpenGardenModal,
+  onOpenArCamera,
   onClose
 }) => {
   const [activeTab, setActiveTab] = useState<OverviewSheetTab>(initialTab);
@@ -268,6 +288,22 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
   const [landmarkTick, setLandmarkTick] = useState<number>(0);
   const [inspectingExpId, setInspectingExpId] = useState<string | null>(initialSelectedExpeditionId);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  // 地瓜球總覽排序／搜尋／顏色篩選／多選／圖4詳情檢視（對照圖 1、圖 2、圖 4）
+  type DeguaSortKey = 'date' | 'favorite' | 'variety' | 'friendship' | 'decor';
+  const [deguaSortKey, setDeguaSortKey] = useState<DeguaSortKey>('friendship');
+  const [deguaSortAsc, setDeguaSortAsc] = useState<boolean>(true);
+  const [isSortSheetOpen, setIsSortSheetOpen] = useState<boolean>(false);
+  const [standbyColorFilter, setStandbyColorFilter] = useState<DeGuaVariety | null>(null);
+  const [isDeguaSearchOpen, setIsDeguaSearchOpen] = useState<boolean>(false);
+  const [deguaSearchQuery, setDeguaSearchQuery] = useState<string>('');
+  const [detailCreatureId, setDetailCreatureId] = useState<string | null>(null);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState<boolean>(false);
+  const [selectedCreatureIds, setSelectedCreatureIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     if (initialSelectedExpeditionId) {
@@ -364,6 +400,78 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
   const inspectingExp = useMemo(
     () => (inspectingExpId ? enrichedExpeditions.find((e) => e.id === inspectingExpId) || null : null),
     [inspectingExpId, enrichedExpeditions]
+  );
+
+  const squadLimit = getSquadLimitForLevel(playerLevel);
+
+  const DE_GUA_SORT_OPTIONS: { key: DeguaSortKey; label: string }[] = [
+    { key: 'date', label: '發現日' },
+    { key: 'favorite', label: '喜愛' },
+    { key: 'variety', label: '種類' },
+    { key: 'friendship', label: '友好度' },
+    { key: 'decor', label: '飾品' }
+  ];
+
+  const VARIETY_ORDER: DeGuaVariety[] = ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'];
+
+  const sortCreaturesFn = useMemo(() => {
+    const dir = deguaSortAsc ? 1 : -1;
+    return (a: DeGuaCreature, b: DeGuaCreature) => {
+      if (deguaSortKey === 'date') {
+        return (a.createdAt - b.createdAt) * dir;
+      }
+      if (deguaSortKey === 'favorite') {
+        const fa = a.isFavorite ? 1 : 0;
+        const fb = b.isFavorite ? 1 : 0;
+        if (fa !== fb) return (fa - fb) * dir;
+      } else if (deguaSortKey === 'variety') {
+        const ia = VARIETY_ORDER.indexOf(a.variety);
+        const ib = VARIETY_ORDER.indexOf(b.variety);
+        if (ia !== ib) return (ia - ib) * dir;
+      } else if (deguaSortKey === 'friendship') {
+        if (a.friendship !== b.friendship) return (a.friendship - b.friendship) * dir;
+      } else if (deguaSortKey === 'decor') {
+        const ca = `${a.hasDecor ? 0 : 1}_${DECOR_CATALOG[a.decor]?.placeCategory || ''}`;
+        const cb = `${b.hasDecor ? 0 : 1}_${DECOR_CATALOG[b.decor]?.placeCategory || ''}`;
+        const cmp = ca.localeCompare(cb, 'zh-Hant');
+        if (cmp !== 0) return cmp * dir;
+      }
+      return (a.createdAt - b.createdAt) * dir;
+    };
+  }, [deguaSortKey, deguaSortAsc]);
+
+  const filteredBySearchCreatures = useMemo(() => {
+    const q = deguaSearchQuery.trim().toLowerCase();
+    if (!q) return creatures;
+    return creatures.filter((c) => {
+      const cat = DECOR_CATALOG[c.decor]?.placeCategory || '';
+      const area = formatDistrictOnlyPlaceName(c.placeName, c.lat, c.lng);
+      const hay = `${c.name} ${area} ${cat} ${VARIETY_CATALOG[c.variety].name}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [creatures, deguaSearchQuery]);
+
+  const squadCreaturesList = useMemo(
+    () => filteredBySearchCreatures.filter((c) => c.inSquad).sort(sortCreaturesFn),
+    [filteredBySearchCreatures, sortCreaturesFn]
+  );
+
+  const standbyAllCount = useMemo(
+    () => creatures.filter((c) => !c.inSquad).length,
+    [creatures]
+  );
+
+  const standbyCreaturesList = useMemo(
+    () =>
+      filteredBySearchCreatures
+        .filter((c) => !c.inSquad && (!standbyColorFilter || c.variety === standbyColorFilter))
+        .sort(sortCreaturesFn),
+    [filteredBySearchCreatures, standbyColorFilter, sortCreaturesFn]
+  );
+
+  const detailCreature = useMemo(
+    () => (detailCreatureId ? creatures.find((c) => c.id === detailCreatureId) || null : null),
+    [detailCreatureId, creatures]
   );
 
   // 確保每一顆蘑菇在圖資載入完成後，100% 即時擁有不重複的真實地標名稱與真實地標實景照片 (photoUrl)
@@ -1346,62 +1454,357 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
             </div>
           )}
 
-          {/* -------------------- 分頁 3：【地瓜球】 -------------------- */}
+          {/* -------------------- 分頁 3：【地瓜球】（完全對照圖 1 & 圖 2：隊伍上方 ＋ 待機 7 色分類 ＋ 5 欄格線 ＋ 5 項升降排序） -------------------- */}
           {activeTab === 'degua' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 18, fontWeight: 900, color: '#1E293B' }}>
-                  🍠 我的地瓜球小隊 ({creatures.length})
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* 頂部保有量 ＋ 排序鈕 ＋ 搜尋放大鏡 */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 17, fontWeight: 800, color: '#334155', letterSpacing: 0.3 }}>
+                  {creatures.length} / {DEFAULT_CREATURE_STORAGE_CAP}
                 </div>
-                {onOpenGardenModal && (
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <button
-                    onClick={() => {
-                      onClose();
-                      onOpenGardenModal();
-                    }}
+                    onClick={() => setIsSortSheetOpen(true)}
                     style={{
-                      border: 'none',
-                      background: '#10B981',
-                      color: '#FFF',
+                      background: '#FFFFFF',
+                      border: '1.2px solid #94A3B8',
                       borderRadius: 99,
-                      padding: '6px 14px',
-                      fontSize: 12,
-                      fontWeight: 900,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    前往花園餵食 →
-                  </button>
-                )}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                {creatures.map((c) => (
-                  <div
-                    key={c.id}
-                    style={{
-                      background: '#F8FAFC',
-                      borderRadius: 18,
-                      padding: '10px',
+                      padding: '5px 14px',
+                      fontSize: 13.5,
+                      fontWeight: 700,
+                      color: '#334155',
+                      cursor: 'pointer',
                       display: 'flex',
-                      flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 4
+                      gap: 5
                     }}
                   >
-                    <DeGuaCharacter
-                      variety={c.variety}
-                      decor={c.decor}
-                      leafStage={c.leafStage}
-                      flowerColor={c.flowerColor}
-                      showDecor={c.hasDecor}
-                      size={58}
-                    />
-                    <div style={{ fontSize: 12, fontWeight: 900, color: '#1E293B' }}>{c.name}</div>
-                    <div style={{ fontSize: 10, color: '#64748B', fontWeight: 700 }}>
-                      📍 {c.placeName}
-                    </div>
-                  </div>
-                ))}
+                    <span>{DE_GUA_SORT_OPTIONS.find((o) => o.key === deguaSortKey)?.label}</span>
+                    <span style={{ fontSize: 11 }}>{deguaSortAsc ? '▲' : '▼'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsDeguaSearchOpen((v) => !v)}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: '50%',
+                      border: '1.2px solid #94A3B8',
+                      background: isDeguaSearchOpen ? '#E2E8F0' : '#FFFFFF',
+                      color: '#334155',
+                      fontSize: 15,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    title="搜尋地瓜球"
+                  >
+                    🔍
+                  </button>
+                </div>
+              </div>
+
+              {isDeguaSearchOpen && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    value={deguaSearchQuery}
+                    onChange={(e) => setDeguaSearchQuery(e.target.value)}
+                    placeholder="輸入名稱、地區或飾品分類關鍵字..."
+                    style={{
+                      flex: 1,
+                      border: '1.5px solid #CBD5E1',
+                      borderRadius: 14,
+                      padding: '8px 12px',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#0F172A'
+                    }}
+                  />
+                  {deguaSearchQuery && (
+                    <button
+                      onClick={() => setDeguaSearchQuery('')}
+                      style={{
+                        border: 'none',
+                        background: '#E2E8F0',
+                        color: '#334155',
+                        borderRadius: 99,
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* 隊伍區塊（上限依等級計算：Lv.68 為 40 顆） */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 16, fontWeight: 900, color: '#1E293B' }}>
+                    隊伍 {squadCreaturesList.length}/{squadLimit} 顆
+                  </span>
+                  {squadCreaturesList.length >= squadLimit && (
+                    <span style={{ fontSize: 12.5, fontWeight: 900, color: '#2B8A78' }}>上限</span>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px 6px' }}>
+                  {squadCreaturesList.map((c) => {
+                    const isPicked = selectedCreatureIds.includes(c.id);
+                    const district = formatDistrictOnlyPlaceName(c.placeName, c.lat, c.lng);
+                    const dMeta = DECOR_CATALOG[c.decor];
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          if (isMultiSelectMode) {
+                            setSelectedCreatureIds((prev) =>
+                              prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]
+                            );
+                          } else {
+                            setDetailCreatureId(c.id);
+                          }
+                        }}
+                        style={{
+                          position: 'relative',
+                          border: isPicked ? '2px solid #2B8A78' : 'none',
+                          borderRadius: 12,
+                          background: isPicked ? '#F0FDFA' : 'transparent',
+                          padding: '2px 2px 4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                          textAlign: 'center'
+                        }}
+                      >
+                        <div style={{ position: 'relative', width: 54, height: 58, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span
+                            style={{
+                              position: 'absolute',
+                              right: -2,
+                              top: 8,
+                              fontSize: 22,
+                              opacity: c.hasDecor ? 0.42 : 0.22,
+                              filter: c.hasDecor ? 'none' : 'grayscale(1)',
+                              pointerEvents: 'none'
+                            }}
+                          >
+                            {dMeta.icon}
+                          </span>
+                          <DeGuaCharacter
+                            variety={c.variety}
+                            decor={c.decor}
+                            leafStage={c.leafStage}
+                            flowerColor={c.flowerColor}
+                            showDecor={c.hasDecor}
+                            isBouncing={false}
+                            size={46}
+                          />
+                          {c.isFavorite && (
+                            <span style={{ position: 'absolute', right: 0, bottom: 2, fontSize: 12, color: '#F59E0B' }}>
+                              ★
+                            </span>
+                          )}
+                          {isMultiSelectMode && (
+                            <span
+                              style={{
+                                position: 'absolute',
+                                left: 0,
+                                top: 0,
+                                width: 17,
+                                height: 17,
+                                borderRadius: '50%',
+                                border: '1.5px solid #2B8A78',
+                                background: isPicked ? '#2B8A78' : '#FFFFFF',
+                                color: '#FFFFFF',
+                                fontSize: 10,
+                                fontWeight: 900,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              {isPicked ? '✓' : ''}
+                            </span>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            color: '#334155',
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            marginTop: 2
+                          }}
+                        >
+                          {c.name}
+                        </div>
+                        <CreatureHeartsRow friendship={c.friendship} heartSize={7.5} />
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#64748B', marginTop: 1 }}>
+                          {district}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 正在待機區塊（7 色分類小圓點篩選 ＋ 5 欄格線，完全對照圖 2） */}
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: '#1E293B', marginBottom: 10 }}>
+                  正在待機 {standbyAllCount} 顆
+                </div>
+
+                {/* 顏色分類篩選圓點列（點選過濾單一顏色、再點一次顯示全部） */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, overflowX: 'auto', paddingBottom: 2 }}>
+                  <button
+                    onClick={() => setStandbyColorFilter(null)}
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      border: standbyColorFilter === null ? '2.5px solid #2B8A78' : '1.5px solid #CBD5E1',
+                      background: 'conic-gradient(#EF4444, #FACC15, #3B82F6, #9333EA, #E5E7EB, #F472B6, #4B5563, #EF4444)',
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
+                    title="顯示全部顏色"
+                  />
+                  {VARIETY_ORDER.map((v) => {
+                    const active = standbyColorFilter === v;
+                    return (
+                      <button
+                        key={v}
+                        onClick={() => setStandbyColorFilter((prev) => (prev === v ? null : v))}
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          border: active ? '3px solid #0F172A' : '1.5px solid rgba(15,23,42,0.2)',
+                          background: VARIETY_CATALOG[v].bodyColor,
+                          boxShadow: active ? '0 0 0 2px #86EFAC' : 'none',
+                          cursor: 'pointer',
+                          flexShrink: 0
+                        }}
+                        title={VARIETY_CATALOG[v].name}
+                      />
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px 6px' }}>
+                  {standbyCreaturesList.map((c) => {
+                    const isPicked = selectedCreatureIds.includes(c.id);
+                    const district = formatDistrictOnlyPlaceName(c.placeName, c.lat, c.lng);
+                    const dMeta = DECOR_CATALOG[c.decor];
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          if (isMultiSelectMode) {
+                            setSelectedCreatureIds((prev) =>
+                              prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]
+                            );
+                          } else {
+                            setDetailCreatureId(c.id);
+                          }
+                        }}
+                        style={{
+                          position: 'relative',
+                          border: isPicked ? '2px solid #2B8A78' : 'none',
+                          borderRadius: 12,
+                          background: isPicked ? '#F0FDFA' : 'transparent',
+                          padding: '2px 2px 4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                          textAlign: 'center'
+                        }}
+                      >
+                        <div style={{ position: 'relative', width: 54, height: 58, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span
+                            style={{
+                              position: 'absolute',
+                              right: -2,
+                              top: 8,
+                              fontSize: 22,
+                              opacity: c.hasDecor ? 0.42 : 0.22,
+                              filter: c.hasDecor ? 'none' : 'grayscale(1)',
+                              pointerEvents: 'none'
+                            }}
+                          >
+                            {dMeta.icon}
+                          </span>
+                          <DeGuaCharacter
+                            variety={c.variety}
+                            decor={c.decor}
+                            leafStage={c.leafStage}
+                            flowerColor={c.flowerColor}
+                            showDecor={c.hasDecor}
+                            isBouncing={false}
+                            size={46}
+                          />
+                          {c.isFavorite && (
+                            <span style={{ position: 'absolute', right: 0, bottom: 2, fontSize: 12, color: '#F59E0B' }}>
+                              ★
+                            </span>
+                          )}
+                          {isMultiSelectMode && (
+                            <span
+                              style={{
+                                position: 'absolute',
+                                left: 0,
+                                top: 0,
+                                width: 17,
+                                height: 17,
+                                borderRadius: '50%',
+                                border: '1.5px solid #2B8A78',
+                                background: isPicked ? '#2B8A78' : '#FFFFFF',
+                                color: '#FFFFFF',
+                                fontSize: 10,
+                                fontWeight: 900,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              {isPicked ? '✓' : ''}
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            color: '#334155',
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            marginTop: 2
+                          }}
+                        >
+                          {c.name}
+                        </div>
+                        <CreatureHeartsRow friendship={c.friendship} heartSize={7.5} />
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#64748B', marginTop: 1 }}>
+                          {district}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -1454,7 +1857,7 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
                   >
                     <div style={{ fontSize: 26, marginBottom: 4 }}>{s.isReady ? '笊✨' : '🍠'}</div>
                     <div style={{ fontSize: 13, fontWeight: 900, color: '#1E293B' }}>
-                      {s.isHuge ? '巨大瓜糰' : VARIETY_CATALOG[s.variety].potName}
+                      {s.isHuge ? '大瓜糰' : VARIETY_CATALOG[s.variety].potName}
                     </div>
                     <div style={{ fontSize: 11, color: '#64748B', fontWeight: 700, marginTop: 2 }}>
                       {s.currentSteps} / {s.targetSteps} 步 {s.isReady ? '（可從鍋裡撈起！）' : ''}
@@ -1496,55 +1899,275 @@ export const ExpeditionsModal: React.FC<ExpeditionsModalProps> = ({
           )}
         </div>
 
-        {/* ==================== 底部懸浮關閉按鈕 (✕) 與「🎖️ 飾品一覽」膠囊 ==================== */}
-        <button
-          className="pikmin-glass-circle-btn"
-          onClick={onClose}
-          style={{
-            position: 'absolute',
-            left: 'clamp(14px, 4vw, 18px)',
-            bottom: 'max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
-            zIndex: 50,
-            width: 'clamp(48px, 6.2lvh, 56px)',
-            height: 'clamp(48px, 6.2lvh, 56px)'
-          }}
-          title="關閉返回"
-        >
-          <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
-            <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
-          </svg>
-        </button>
+        {/* ==================== 底部懸浮關閉按鈕 (✕)、中間「🎖️ 飾品一覽」、右側「選擇多項」或批次操作列（對照圖 1） ==================== */}
+        {isMultiSelectMode && activeTab === 'degua' ? (
+          <div
+            style={{
+              position: 'absolute',
+              left: 14,
+              right: 14,
+              bottom: 'max(16px, env(safe-area-inset-bottom))',
+              zIndex: 55,
+              background: '#FFFFFF',
+              borderRadius: 99,
+              padding: '8px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 6,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+              border: '1.5px solid #E2E8F0'
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 900, color: '#0F172A', paddingLeft: 6 }}>
+              已選 {selectedCreatureIds.length} 顆
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                disabled={selectedCreatureIds.length === 0}
+                onClick={() => {
+                  if (onBatchUpdateSquad) onBatchUpdateSquad(selectedCreatureIds, true);
+                  setSelectedCreatureIds([]);
+                }}
+                style={{
+                  border: 'none',
+                  background: '#10B981',
+                  color: '#FFF',
+                  borderRadius: 99,
+                  padding: '6px 10px',
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                加入隊伍
+              </button>
+              <button
+                disabled={selectedCreatureIds.length === 0}
+                onClick={() => {
+                  if (onBatchUpdateSquad) onBatchUpdateSquad(selectedCreatureIds, false);
+                  setSelectedCreatureIds([]);
+                }}
+                style={{
+                  border: '1px solid #CBD5E1',
+                  background: '#F8FAFC',
+                  color: '#334155',
+                  borderRadius: 99,
+                  padding: '6px 10px',
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                待機
+              </button>
+              <button
+                disabled={selectedCreatureIds.length === 0}
+                onClick={() => {
+                  if (onReleaseCreatures) onReleaseCreatures(selectedCreatureIds);
+                  setSelectedCreatureIds([]);
+                  setIsMultiSelectMode(false);
+                }}
+                style={{
+                  border: 'none',
+                  background: '#E11D48',
+                  color: '#FFF',
+                  borderRadius: 99,
+                  padding: '6px 10px',
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                放生
+              </button>
+              <button
+                onClick={() => {
+                  setIsMultiSelectMode(false);
+                  setSelectedCreatureIds([]);
+                }}
+                style={{
+                  border: '1px solid #94A3B8',
+                  background: '#FFFFFF',
+                  color: '#334155',
+                  borderRadius: 99,
+                  padding: '6px 10px',
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                完成
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button
+              className="pikmin-glass-circle-btn"
+              onClick={onClose}
+              style={{
+                position: 'absolute',
+                left: 'clamp(14px, 4vw, 18px)',
+                bottom: 'max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
+                zIndex: 50,
+                width: 'clamp(48px, 6.2lvh, 56px)',
+                height: 'clamp(48px, 6.2lvh, 56px)'
+              }}
+              title="關閉返回"
+            >
+              <svg width="58%" height="58%" viewBox="0 0 24 24" fill="none">
+                <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+              </svg>
+            </button>
 
-        <button
-          onClick={() => {
-            if (onOpenDecorModal) {
-              onClose();
-              onOpenDecorModal();
-            }
-          }}
+            <button
+              onClick={() => {
+                if (onOpenDecorModal) {
+                  onClose();
+                  onOpenDecorModal();
+                }
+              }}
+              style={{
+                position: 'absolute',
+                left: activeTab === 'degua' ? '50%' : undefined,
+                right: activeTab === 'degua' ? undefined : 18,
+                transform: activeTab === 'degua' ? 'translateX(-50%)' : undefined,
+                bottom: 'max(18px, env(safe-area-inset-bottom))',
+                zIndex: 50,
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                borderRadius: 99,
+                padding: '10px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 13.5,
+                fontWeight: 900,
+                color: '#1E293B',
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span style={{ fontSize: 18 }}>🎖️</span>
+              <span>飾品一覽</span>
+            </button>
+
+            {activeTab === 'degua' && (
+              <button
+                onClick={() => {
+                  setIsMultiSelectMode(true);
+                  setSelectedCreatureIds([]);
+                }}
+                style={{
+                  position: 'absolute',
+                  right: 14,
+                  bottom: 'max(18px, env(safe-area-inset-bottom))',
+                  zIndex: 50,
+                  background: '#FFFFFF',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: 99,
+                  padding: '10px 14px',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: '#334155',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                選擇多項
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* 圖 2 排序底部彈窗（發現日 / 喜愛 / 種類 / 友好度 / 飾品，再次點擊切換升冪▲或降冪▼） */}
+      {isSortSheetOpen && (
+        <div
+          onClick={() => setIsSortSheetOpen(false)}
           style={{
-            position: 'absolute',
-            right: 18,
-            bottom: 'max(18px, env(safe-area-inset-bottom))',
-            zIndex: 50,
-            background: '#FFFFFF',
-            border: '1px solid #E2E8F0',
-            borderRadius: 99,
-            padding: '10px 18px',
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1180,
+            background: 'rgba(15, 23, 42, 0.45)',
             display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontSize: 14,
-            fontWeight: 900,
-            color: '#1E293B',
-            cursor: 'pointer',
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)'
+            alignItems: 'flex-end'
           }}
         >
-          <span style={{ fontSize: 20 }}>🎖️</span>
-          <span>飾品一覽</span>
-        </button>
-      </div>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              background: '#FFFFFF',
+              borderRadius: '26px 26px 0 0',
+              padding: '16px 20px max(26px, env(safe-area-inset-bottom))',
+              boxShadow: '0 -10px 30px rgba(0,0,0,0.22)'
+            }}
+          >
+            <div style={{ textAlign: 'center', fontSize: 16, fontWeight: 700, color: '#334155', paddingBottom: 12, borderBottom: '1px solid #E2E8F0', marginBottom: 8 }}>
+              排序：
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {DE_GUA_SORT_OPTIONS.map((opt) => {
+                const active = deguaSortKey === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    onClick={() => {
+                      if (active) {
+                        setDeguaSortAsc((a) => !a);
+                      } else {
+                        setDeguaSortKey(opt.key);
+                        setDeguaSortAsc(false);
+                      }
+                      setIsSortSheetOpen(false);
+                    }}
+                    style={{
+                      border: 'none',
+                      borderRadius: 12,
+                      padding: '11px 16px',
+                      background: active ? '#87CEBF' : 'transparent',
+                      color: active ? '#FFFFFF' : '#334155',
+                      fontSize: 16,
+                      fontWeight: active ? 800 : 500,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6
+                    }}
+                  >
+                    <span>{opt.label}</span>
+                    {active && <span style={{ fontSize: 12 }}>{deguaSortAsc ? '▲' : '▼'}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 圖 4：點擊清單內任意地瓜球開啟 3D 旋轉詳細資訊圖卡 */}
+      {detailCreature && (
+        <CreatureDetailModal
+          creature={detailCreature}
+          allCreatures={creatures}
+          squadLimit={squadLimit}
+          squadCount={squadCreaturesList.length}
+          onToggleInSquad={(id) => onToggleInSquad?.(id)}
+          onToggleFavorite={(id) => onToggleFavorite?.(id)}
+          onRenameCreature={(id, nm) => onRenameCreature?.(id, nm)}
+          onReleaseCreature={(id) => onReleaseCreatures?.([id])}
+          onOpenArCamera={() => {
+            setDetailCreatureId(null);
+            onOpenArCamera?.();
+          }}
+          onClose={() => setDetailCreatureId(null)}
+        />
+      )}
 
       {/* 點選某項待出發／進行中探險後的完整圖卡、隊伍選擇、GO 目送與實景追蹤流程 */}
       {inspectingExp && (
@@ -1711,6 +2334,7 @@ export const DetectorModal: React.FC<DetectorModalProps> = ({
 interface MushroomBattleModalProps {
   mushroom: MushroomNode;
   creatures: DeGuaCreature[];
+  playerLevel?: number;
   onJoinMushroomBattle: (mushroomId: string) => void;
   onNavigateToMap?: (mushroom: MushroomNode) => void;
   onClose: () => void;
@@ -1719,16 +2343,23 @@ interface MushroomBattleModalProps {
 export const MushroomBattleModal: React.FC<MushroomBattleModalProps> = ({
   mushroom,
   creatures,
+  playerLevel = 68,
   onJoinMushroomBattle,
   onNavigateToMap,
   onClose
 }) => {
   const [isSelectingSquad, setIsSelectingSquad] = useState<boolean>(false);
   const catalogEntry = MUSHROOM_CATALOG[mushroom.element] || MUSHROOM_CATALOG.red;
+  const mushroomSquadLimit = Math.max(1, getMushroomSquadLimitForLevel(playerLevel));
   const availableSquad = creatures.filter((c) => c.busyState === 'free');
-  const eligibleSquad = availableSquad.filter(
-    (c) => calculateCreatureMushroomPower(c, mushroom.element).canJoin
-  );
+  const eligibleSquad = [...availableSquad]
+    .filter((c) => calculateCreatureMushroomPower(c, mushroom.element).canJoin)
+    .sort(
+      (a, b) =>
+        calculateCreatureMushroomPower(b, mushroom.element).power -
+        calculateCreatureMushroomPower(a, mushroom.element).power
+    )
+    .slice(0, mushroomSquadLimit);
   const mySquadPower = eligibleSquad.reduce(
     (sum, c) => sum + calculateCreatureMushroomPower(c, mushroom.element).power,
     0
@@ -2166,11 +2797,11 @@ export const MushroomBattleModal: React.FC<MushroomBattleModalProps> = ({
             }}
           >
             <div style={{ fontSize: 13, fontWeight: 900, color: '#0F172A', marginBottom: 8, textAlign: 'center' }}>
-              🍠 我方出戰地瓜球小隊（合計工作力 ⚡{mySquadPower.toLocaleString()}）
+              🍠 我方出戰地瓜球小隊（{eligibleSquad.length}/{mushroomSquadLimit} 顆・合計工作力 ⚡{mySquadPower.toLocaleString()}）
             </div>
 
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-              {availableSquad.slice(0, 5).map((c) => {
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', maxHeight: 165, overflowY: 'auto', marginBottom: 10 }}>
+              {(eligibleSquad.length > 0 ? eligibleSquad : availableSquad.slice(0, 8)).map((c) => {
                 const pInfo = calculateCreatureMushroomPower(c, mushroom.element);
                 return (
                   <div

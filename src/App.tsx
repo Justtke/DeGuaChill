@@ -12,7 +12,9 @@ import {
   ExpeditionItem,
   ExtraFryerSlotInventory,
   ExtraFryerSlotType,
+  getMushroomSquadLimitForLevel,
   getPetalVariantMeta,
+  getSquadLimitForLevel,
   MushroomNode,
   PetalColor,
   PETAL_META,
@@ -71,11 +73,23 @@ import {
 } from './services/pikminLifecycleService';
 import {
   buildGiftExpeditionItem,
-  ensure40TestCreatures,
+  createComprehensiveTestExpeditions,
+  ensureTestSquadAndStandby,
   ExpeditionDurationEstimate,
   formatDistrictOnlyPlaceName,
   normalizeExpeditionItem
 } from './services/expeditionService';
+import {
+  awardRareDecorPoints,
+  buildRareGiftExpeditionItem,
+  RARE_POINTS_EARN_REGULAR_DECOR,
+  RARE_POINTS_PLUCK_HUGE,
+  RARE_POINTS_PLUCK_NORMAL,
+  RARE_POINTS_RELEASE_NO_DECOR,
+  RARE_POINTS_RELEASE_WITH_DECOR,
+  RareDecorProgressMap,
+  syncUnlockedRareProgressMap
+} from './services/rareDecorService';
 import {
   CellCooldownRecord,
   computeEarnedCoinDelta,
@@ -306,7 +320,16 @@ export const App: React.FC = () => {
     return stored;
   });
   const [playerLevel, setPlayerLevel] = useState<number>(() => {
-    return Number(localStorage.getItem('dg_player_level_v2') || '20');
+    if (!localStorage.getItem('dg_test_lv68_v1')) {
+      try {
+        localStorage.setItem('dg_test_lv68_v1', '1');
+        localStorage.setItem('dg_player_level_v2', '68');
+      } catch {
+        // ignore
+      }
+      return 68;
+    }
+    return Number(localStorage.getItem('dg_player_level_v2') || '68');
   });
   const [coins, setCoins] = useState<number>(() => {
     return Number(localStorage.getItem('dg_coins_v2') || '180');
@@ -563,23 +586,45 @@ export const App: React.FC = () => {
   const [creatures, setCreatures] = useState<DeGuaCreature[]>(() => {
     const raw = localStorage.getItem('dg_creatures_v2');
     const parsed = raw ? (JSON.parse(raw) as DeGuaCreature[]) : INITIAL_CREATURES;
-    if (!localStorage.getItem('dg_test_40_squad_v1')) {
+    if (!localStorage.getItem('dg_test_140_squad_v1')) {
       try {
-        localStorage.setItem('dg_test_40_squad_v1', '1');
+        localStorage.setItem('dg_test_140_squad_v1', '1');
       } catch {
         // ignore
       }
-      return ensure40TestCreatures(parsed, myLat, myLng);
+      return ensureTestSquadAndStandby(parsed, myLat, myLng);
     }
-    return parsed.length < 40 ? ensure40TestCreatures(parsed, myLat, myLng) : parsed;
+    return parsed.length < 40 ? ensureTestSquadAndStandby(parsed, myLat, myLng) : parsed;
+  });
+  const [rareProgressMap, setRareProgressMap] = useState<RareDecorProgressMap>(() => {
+    try {
+      const raw = localStorage.getItem('dg_rare_decor_v1');
+      if (raw) return JSON.parse(raw) as RareDecorProgressMap;
+    } catch {
+      // ignore
+    }
+    return {};
   });
   const creaturesRef = useRef<DeGuaCreature[]>(creatures);
   creaturesRef.current = creatures;
+  const rareProgressRef = useRef<RareDecorProgressMap>(rareProgressMap);
+  rareProgressRef.current = rareProgressMap;
   const dailyLifecycleRef = useRef<DailyLifecycleState>(dailyLifecycle);
   dailyLifecycleRef.current = dailyLifecycle;
   const [expeditions, setExpeditions] = useState<ExpeditionItem[]>(() => {
     const raw = localStorage.getItem('dg_expeditions_v2');
-    const parsed = raw ? (JSON.parse(raw) as ExpeditionItem[]) : INITIAL_EXPEDITIONS;
+    let parsed = raw ? (JSON.parse(raw) as ExpeditionItem[]) : createComprehensiveTestExpeditions(myLat, myLng);
+    if (!localStorage.getItem('dg_test_exp_pack_v2')) {
+      try {
+        localStorage.setItem('dg_test_exp_pack_v2', '1');
+      } catch {
+        // ignore
+      }
+      const pack = createComprehensiveTestExpeditions(myLat, myLng);
+      const packIds = new Set(pack.map((p) => p.id));
+      const kept = parsed.filter((e) => !packIds.has(e.id) && (e.status !== 'available' || e.kind === 'gift'));
+      parsed = [...pack, ...kept];
+    }
     return parsed.map((e) => {
       const normalized = normalizeExpeditionItem(e, creaturesRef.current, Date.now());
       if (normalized.status === 'active' && normalized.completesAt && Date.now() >= normalized.completesAt) {
@@ -620,6 +665,7 @@ export const App: React.FC = () => {
   const [isGardenOpen, setIsGardenOpen] = useState<boolean>(false);
   const [isPlanterOpen, setIsPlanterOpen] = useState<boolean>(false);
   const [isExpeditionsOpen, setIsExpeditionsOpen] = useState<boolean>(false);
+  const [expeditionsInitialTab, setExpeditionsInitialTab] = useState<'lifelog' | 'degua' | 'seedling' | 'expedition' | 'postcard'>('expedition');
   const [isDetectorOpen, setIsDetectorOpen] = useState<boolean>(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
   const [focusedMapTarget, setFocusedMapTarget] = useState<{
@@ -696,7 +742,12 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     localStorage.setItem('dg_creatures_v2', JSON.stringify(creatures));
+    setRareProgressMap((prev) => syncUnlockedRareProgressMap(prev, creatures));
   }, [creatures]);
+
+  useEffect(() => {
+    localStorage.setItem('dg_rare_decor_v1', JSON.stringify(rareProgressMap));
+  }, [rareProgressMap]);
 
   useEffect(() => {
     localStorage.setItem('dg_daily_lifecycle_v1', JSON.stringify(dailyLifecycle));
@@ -797,22 +848,17 @@ export const App: React.FC = () => {
 
     const tick = () => {
       const now = Date.now();
-      let completedNowTitle: string | null = null;
       setExpeditions((prev) => {
         let changed = false;
         const next = prev.map((e) => {
           if (e.status === 'active' && e.completesAt && now >= e.completesAt) {
             changed = true;
-            if (!completedNowTitle) completedNowTitle = e.title;
             return { ...e, status: 'completed' as const };
           }
           return e;
         });
         return changed ? next : prev;
       });
-      if (completedNowTitle) {
-        showToast(`🎁 地瓜球搬運「${completedNowTitle}」探險回來了！快去口哨花園收成！`);
-      }
     };
 
     tick();
@@ -1120,9 +1166,9 @@ export const App: React.FC = () => {
     if (lifeRes.allBudTriggeredNow) {
       showToast('🌷 今日累積步行達標，全體地瓜球頭頂已結成花苞！');
     } else if (lifeRes.squadBudCount > 0) {
-      showToast(`🌷 散步累積步數達標，${lifeRes.squadBudCount} 隻隊伍地瓜球長出了花苞！`);
+      showToast(`🌷 散步累積步數達標，${lifeRes.squadBudCount} 顆隊伍地瓜球長出了花苞！`);
     } else if (lifeRes.bareRecoveredCount > 0) {
-      showToast(`🌱 步行恢復達標，${lifeRes.bareRecoveredCount} 隻光禿禿地瓜球重新長回葉子了！`);
+      showToast(`🌱 步行恢復達標，${lifeRes.bareRecoveredCount} 顆光禿禿地瓜球重新長回葉子了！`);
     }
 
     setSeedlings((prev) =>
@@ -1436,7 +1482,6 @@ export const App: React.FC = () => {
     setSeedlings((prev) =>
       prev.map((s) => (s.id === seedlingId ? { ...s, slotIndex } : s))
     );
-    showToast('🍳 已將生瓜糰丟入黃金油鍋！');
   };
 
   const handlePluckSeedling = (seedling: Seedling) => {
@@ -1446,27 +1491,44 @@ export const App: React.FC = () => {
       : seedling.variety;
     const vMeta = VARIETY_CATALOG[hatchedVariety];
     const dMeta = DECOR_CATALOG[seedling.decor];
+    const squadCap = getSquadLimitForLevel(playerLevel);
+    const curSquadCount = creaturesRef.current.filter((c) => c.inSquad).length;
     const newCreature: DeGuaCreature = {
       id: `dg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: `${dMeta.icon}${vMeta.name}`,
       variety: hatchedVariety,
       decor: seedling.decor,
       decorSetId: seedling.decorSetId,
-      placeName: seedling.placeName,
+      placeName: formatDistrictOnlyPlaceName(seedling.placeName, seedling.lat, seedling.lng),
       lat: seedling.lat,
       lng: seedling.lng,
-      friendship: seedling.isHuge ? 0 : 100,
+      friendship: 0,
       hasDecor: seedling.isHuge,
       giftExpeditionCreated: seedling.isHuge,
       leafStage: 'leaf',
       flowerColor: 'white',
       pluckCountToday: 0,
-      inSquad: true,
+      stepsWalked: 0,
+      inSquad: curSquadCount < squadCap,
       busyState: 'free',
       createdAt: Date.now()
     };
 
-    setCreatures((prev) => [newCreature, ...prev]);
+    const nextCreaturesList = [newCreature, ...creaturesRef.current];
+    creaturesRef.current = nextCreaturesList;
+    setCreatures(nextCreaturesList);
+
+    // 稀有飾品點數升級制：一般瓜糰 +30 點、大瓜糰 +200 點（於該類別一般飾品集齊後生效）
+    setRareProgressMap((prev) => {
+      const synced = syncUnlockedRareProgressMap(prev, nextCreaturesList);
+      return awardRareDecorPoints(
+        synced,
+        nextCreaturesList,
+        seedling.decor,
+        seedling.isHuge ? RARE_POINTS_PLUCK_HUGE : RARE_POINTS_PLUCK_NORMAL
+      ).nextMap;
+    });
+
     setSeedlings((prev) => prev.filter((s) => s.id !== seedling.id));
     if (seedling.slotIndex !== null && seedling.slotIndex >= 2) {
       setActiveExtraSlots((prev) =>
@@ -1504,16 +1566,82 @@ export const App: React.FC = () => {
   };
 
   const handleToggleInSquad = (creatureId: string) => {
+    const limit = getSquadLimitForLevel(playerLevel);
     setCreatures((prev) => {
       const target = prev.find((c) => c.id === creatureId);
       if (!target) return prev;
       const currentSquadCount = prev.filter((c) => c.inSquad).length;
-      if (!target.inSquad && currentSquadCount >= 10) {
-        showToast('⚠️ 散步隊伍最多容納 10 隻地瓜球，請先移除其他夥伴！');
+      if (!target.inSquad && currentSquadCount >= limit) {
+        showToast(`⚠️ 隊伍上限為 ${limit} 顆地瓜球！`);
         return prev;
       }
       return prev.map((c) => (c.id === creatureId ? { ...c, inSquad: !c.inSquad } : c));
     });
+  };
+
+  const handleBatchUpdateSquad = (creatureIds: string[], joinSquad: boolean) => {
+    const limit = getSquadLimitForLevel(playerLevel);
+    const idSet = new Set(creatureIds);
+    setCreatures((prev) => {
+      let curInSquad = prev.filter((c) => c.inSquad).length;
+      return prev.map((c) => {
+        if (!idSet.has(c.id)) return c;
+        if (joinSquad) {
+          if (c.inSquad || curInSquad >= limit) return c;
+          curInSquad++;
+          return { ...c, inSquad: true };
+        }
+        return { ...c, inSquad: false };
+      });
+    });
+  };
+
+  const handleRenameCreature = (creatureId: string, newName: string) => {
+    setCreatures((prev) =>
+      prev.map((c) => (c.id === creatureId ? { ...c, name: newName } : c))
+    );
+  };
+
+  const handleReleaseCreatures = (creatureIds: string[]) => {
+    if (creatureIds.length === 0) return;
+    const idSet = new Set(creatureIds);
+    const released = creaturesRef.current.filter((c) => idSet.has(c.id));
+    const remaining = creaturesRef.current.filter((c) => !idSet.has(c.id));
+    creaturesRef.current = remaining;
+    setCreatures(remaining);
+
+    setRareProgressMap((prev) => {
+      let curMap = syncUnlockedRareProgressMap(prev, remaining);
+      for (const rc of released) {
+        const pts =
+          rc.hasDecor && !rc.isRareDecor
+            ? RARE_POINTS_RELEASE_WITH_DECOR
+            : !rc.hasDecor
+              ? RARE_POINTS_RELEASE_NO_DECOR
+              : 0;
+        if (pts > 0) {
+          curMap = awardRareDecorPoints(curMap, remaining, rc.decor, pts).nextMap;
+        }
+      }
+      return curMap;
+    });
+  };
+
+  const handleAssignRareGift = (cat: DecorCategory, creature: DeGuaCreature) => {
+    setRareProgressMap((prev) => {
+      const cur = prev[cat];
+      if (!cur || cur.pendingGifts <= 0) return prev;
+      return {
+        ...prev,
+        [cat]: { ...cur, pendingGifts: Math.max(0, cur.pendingGifts - 1) }
+      };
+    });
+    const rareExp = buildRareGiftExpeditionItem(creature, myLat, myLng);
+    setExpeditions((prev) => [rareExp, ...prev]);
+    setIsDecorModalOpen(false);
+    setExpeditionsInitialTab('expedition');
+    setPreselectedExpeditionId(rareExp.id);
+    setIsExpeditionsOpen(true);
   };
 
   const handleToggleFavorite = (creatureId: string) => {
@@ -1560,7 +1688,6 @@ export const App: React.FC = () => {
     const totalDrops =
       nectarGains.white + nectarGains.yellow + nectarGains.red + nectarGains.blue;
     if (totalDrops <= 0) {
-      showToast('😗 雙擊口哨確認！目前草原與已完成探險的果實已全數收齊');
       return;
     }
 
@@ -1584,7 +1711,6 @@ export const App: React.FC = () => {
       setCreatures(nextCreatures);
       setExpeditions((prev) => [...newGiftExps, ...prev.filter((e) => !claimedExpIds.has(e.id))]);
     }
-    showToast(`🍎✨ 雙擊口哨一次收成 ${totalPieces} 顆果實，榨出 +${totalDrops} 滴精華花蜜！`);
   };
 
   // 花園拋出精華球餵食（套用皮克敏葉子+白精華變花苞 / 花苞雙倍花瓣 / 6/6 光禿禿規則）
@@ -1602,14 +1728,6 @@ export const App: React.FC = () => {
     );
 
     if (res.usedNectar === 0) {
-      const freeSquad = creaturesRef.current.filter((c) => c.inSquad && c.busyState === 'free');
-      const hasFlowering = freeSquad.some((c) => c.leafStage === 'flower');
-      const hasBare = freeSquad.some((c) => c.leafStage === 'bare');
-      if (hasFlowering) {
-        showToast('🌼 頭頂已開滿花，滑動頭頂即可採收花瓣');
-      } else if (hasBare) {
-        showToast('🌱 已餵滿 6/6 光禿禿，走 2,000 步或等 6 小時長回葉子');
-      }
       return;
     }
 
@@ -1625,7 +1743,6 @@ export const App: React.FC = () => {
         buildGiftExpeditionItem(c, myLat, myLng)
       );
       setExpeditions((prev) => [...newGiftExpeditions, ...prev]);
-      showToast(`🎁 ${res.giftReadyCreatures[0].name} 滿 4 顆心了！可前往花園或探險派它去拿禮物！`);
     }
   };
 
@@ -1637,16 +1754,18 @@ export const App: React.FC = () => {
     const color = res.petalColor;
     creaturesRef.current = res.creatures;
     setCreatures(res.creatures);
+    setPetalInventory((prev) => ({
+      ...prev,
+      [`daisy_${color}`]: Math.min(300, (prev[`daisy_${color}`] ?? 0) + res.petalsGained)
+    }));
     setPetalJar((prev) => ({
       ...prev,
       [color]: Math.min(300, prev[color] + res.petalsGained)
     }));
   };
 
-  // 吹口哨集合小隊（不繞過 6/6 光禿禿冷卻懲罰，符合皮克敏正式規則）
-  const handleWhistleGather = () => {
-    showToast('😗 吹響口哨！地瓜球小隊集合完畢');
-  };
+  // 吹口哨集合小隊（無多餘提示文字）
+  const handleWhistleGather = () => {};
 
   const handleFireDetector = async () => {
     setIsScanningRadar(true);
@@ -1735,7 +1854,8 @@ export const App: React.FC = () => {
       creaturesRef.current,
       exp.assignedCreatureIds,
       exp.kind,
-      exp.targetCreatureId
+      exp.targetCreatureId,
+      { isRareGift: exp.isRareGift, rareDecorSetId: exp.rareDecorSetId }
     );
     creaturesRef.current = finRes.creatures;
     setCreatures(finRes.creatures);
@@ -1749,9 +1869,6 @@ export const App: React.FC = () => {
         ...prev,
         [exp.nectarColor!]: prev[exp.nectarColor!] + exp.nectarAmount!
       }));
-      showToast(
-        `${exp.fruitEmoji} 搬回【${exp.title}】，榨出了 +${exp.nectarAmount} 滴${PETAL_META[exp.nectarColor].nectarName}（全員友好度 +1）！`
-      );
     } else if (exp.kind === 'seedling' && exp.seedlingVariety && exp.seedlingDecor) {
       const v = exp.seedlingVariety;
       const cleanPlace = formatDistrictOnlyPlaceName(exp.placeName, exp.lat, exp.lng);
@@ -1771,18 +1888,22 @@ export const App: React.FC = () => {
         discoveredAt: Date.now()
       };
       setSeedlings((prev) => [newSeed, ...prev]);
-      showToast(`🍠 成功把「${cleanPlace}」的【${exp.title}】收進油鍋背包（全員友好度 +1）！`);
     } else if (exp.kind === 'gift' && exp.targetCreatureId) {
       const decoratedOne = finRes.creatures.find((c) => c.id === exp.targetCreatureId);
-      if (decoratedOne) {
-        setNewlyPluckedCreature(decoratedOne);
+      if (decoratedOne && !exp.isRareGift) {
+        setRareProgressMap((prev) => {
+          const synced = syncUnlockedRareProgressMap(prev, finRes.creatures);
+          return awardRareDecorPoints(
+            synced,
+            finRes.creatures,
+            decoratedOne.decor,
+            RARE_POINTS_EARN_REGULAR_DECOR
+          ).nextMap;
+        });
       }
       setIsExpeditionsOpen(false);
     }
 
-    if (newGiftExps.length > 0) {
-      showToast(`🎁 ${finRes.giftReadyCreatures[0].name} 滿 4 顆心了！可去花園或探險拿取專屬禮物！`);
-    }
     setExpeditions((prev) => [...newGiftExps, ...prev.filter((e) => e.id !== expId)]);
   };
 
@@ -1797,10 +1918,18 @@ export const App: React.FC = () => {
     setIsExpeditionsOpen(true);
   };
 
-  // 參加蘑菇戰鬥
+  // 參加蘑菇戰鬥（依玩家等級套用蘑菇派遣上限，Lv.26+ 達 40 顆）
   const handleJoinMushroomBattle = (mushroomId: string) => {
     if (!selectedMushroom) return;
-    const availableSquad = creatures.filter((c) => c.busyState === 'free');
+    const mushroomCap = Math.max(1, getMushroomSquadLimitForLevel(playerLevel));
+    const availableSquad = creatures
+      .filter((c) => c.busyState === 'free' && calculateCreatureMushroomPower(c, selectedMushroom.element).canJoin)
+      .sort(
+        (a, b) =>
+          calculateCreatureMushroomPower(b, selectedMushroom.element).power -
+          calculateCreatureMushroomPower(a, selectedMushroom.element).power
+      )
+      .slice(0, mushroomCap);
     const myPower = availableSquad.reduce(
       (sum, c) => sum + calculateCreatureMushroomPower(c, selectedMushroom.element).power,
       0
@@ -1861,8 +1990,8 @@ export const App: React.FC = () => {
   // 領取進行中任務獎勵
   const handleClaimMissionReward = () => {
     if (mushroomsDestroyed < missionTarget) {
+      setExpeditionsInitialTab('expedition');
       setIsExpeditionsOpen(true);
-      showToast(`🍄 目前已摧毀 ${mushroomsDestroyed}/${missionTarget} 朵蘑菇！已在探險一覽列出附近可打的蘑菇！`);
       return;
     }
     setMissionTarget((t) => t + 3);
@@ -1873,11 +2002,11 @@ export const App: React.FC = () => {
       variety: 'purple',
       decor: 'bubble_tea',
       isHuge: true,
-      placeName: '任務達成限定獎勵',
+      placeName: formatDistrictOnlyPlaceName('', myLat, myLng),
       lat: myLat,
       lng: myLng,
       currentSteps: 0,
-      targetSteps: 1000,
+      targetSteps: 10000,
       slotIndex: null,
       isReady: false,
       notified: false,
@@ -1885,7 +2014,7 @@ export const App: React.FC = () => {
     };
     setSeedlings((prev) => [rewardSeed, ...prev]);
     setExtraSlotInventory((prev) => ({ ...prev, standard: prev.standard + 1 }));
-    showToast('🎉 任務完成！升級並獲得【1,000步巨大瓜糰】、💰100 金幣與 🔵 額外欄位 ×1！');
+    showToast('🎉 任務完成！升級並獲得【大瓜糰】、💰100 金幣與 🔵 額外欄位 ×1！');
   };
 
   // 商店購買
@@ -2213,6 +2342,7 @@ export const App: React.FC = () => {
             <button
               onClick={() => {
                 setIsProfileMenuOpen(false);
+                setExpeditionsInitialTab('expedition');
                 setIsExpeditionsOpen(true);
               }}
               style={{
@@ -2644,7 +2774,10 @@ export const App: React.FC = () => {
                 key={btn.key}
                 onClick={() => {
                   setIsProfileMenuOpen(false);
-                  if (btn.key === 'garden') setIsGardenOpen(true);
+                  if (btn.key === 'garden') {
+                    setExpeditionsInitialTab('degua');
+                    setIsExpeditionsOpen(true);
+                  }
                   if (btn.key === 'planter') setIsPlanterOpen(true);
                   if (btn.key === 'postcards') setIsPostcardsModalOpen(true);
                   if (btn.key === 'ar') setIsArCameraOpen(true);
@@ -3096,7 +3229,6 @@ export const App: React.FC = () => {
               className="pikmin-glass-circle-btn"
               onClick={() => {
                 setMapBearing(0);
-                showToast('🧭 已將視角回正北方（0°）');
               }}
               style={{
                 position: 'absolute',
@@ -3576,10 +3708,12 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* 🎖️ 飾品一覽 */}
+      {/* 🎖️ 飾品一覽（含稀有飾品點數升級進度條） */}
       {isDecorModalOpen && (
         <DecorCollectionModal
           creatures={creatures}
+          rareProgressMap={rareProgressMap}
+          onAssignRareGift={handleAssignRareGift}
           onClose={() => setIsDecorModalOpen(false)}
         />
       )}
@@ -3611,11 +3745,12 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* 🍄 探險一覽（點主畫面地圖上方「你有 X 項探險！」進入） */}
+      {/* 🍄 探險 ／ 地瓜球總覽（圖 1 列表 & 探險一覽） */}
       {isExpeditionsOpen && (
         <ExpeditionsModal
           myLat={myLat}
           myLng={myLng}
+          playerLevel={playerLevel}
           todaySteps={todaySteps}
           dailyMoods={dailyMoods}
           expeditions={expeditions}
@@ -3628,6 +3763,7 @@ export const App: React.FC = () => {
           bigFlowers={bigFlowers}
           isPlanting={isPlanting}
           activePetalColor={activePetalColor}
+          initialTab={expeditionsInitialTab}
           initialSelectedExpeditionId={preselectedExpeditionId}
           onSelectMushroom={(m) => {
             // 保留 isExpeditionsOpen=true，讓點進蘑菇詳情按「返回」時精準回到原本的探險頁面！
@@ -3640,9 +3776,18 @@ export const App: React.FC = () => {
             setPreselectedExpeditionId(null);
             setIsGardenOpen(true);
           }}
+          onToggleInSquad={handleToggleInSquad}
+          onBatchUpdateSquad={handleBatchUpdateSquad}
+          onToggleFavorite={handleToggleFavorite}
+          onRenameCreature={handleRenameCreature}
+          onReleaseCreatures={handleReleaseCreatures}
           onOpenDecorModal={() => setIsDecorModalOpen(true)}
           onOpenPlanterModal={() => setIsPlanterOpen(true)}
           onOpenGardenModal={() => setIsGardenOpen(true)}
+          onOpenArCamera={() => {
+            setIsExpeditionsOpen(false);
+            setIsArCameraOpen(true);
+          }}
           onClose={() => {
             setIsExpeditionsOpen(false);
             setPreselectedExpeditionId(null);
@@ -3801,14 +3946,16 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* 😗 口哨花園（自由花草原散步 / 單擊集合 / 雙擊一次收水果 / 切換隊伍與最愛） */}
+      {/* 😗 3D 口哨花園（獨立個體 3D 行動 / 抓取至放大鏡看詳情 / 拋蜜 / 滑瓣 / 開箱） */}
       {isGardenOpen && (
         <GardenWhistleView
           creatures={creatures}
+          squadLimit={getSquadLimitForLevel(playerLevel)}
           coins={coins}
           nectarJar={nectarJar}
           petalJar={petalJar}
           selectedNectar={selectedNectar}
+          rareProgressMap={rareProgressMap}
           readyFruitExpeditionsCount={
             expeditions.filter((e) => e.kind === 'fruit' && e.status === 'completed').length
           }
@@ -3823,6 +3970,33 @@ export const App: React.FC = () => {
           onOpenGiftExpedition={handleOpenGiftExpeditionFromGarden}
           onToggleInSquad={handleToggleInSquad}
           onToggleFavorite={handleToggleFavorite}
+          onRenameCreature={handleRenameCreature}
+          onReleaseCreature={(id) => handleReleaseCreatures([id])}
+          onKeepPostcard={(exp) => {
+            setPostcards((prev) => [
+              {
+                id: `pc_exp_${Date.now()}`,
+                placeName: formatDistrictOnlyPlaceName(exp.placeName, exp.lat, exp.lng),
+                mushroomName: `${exp.title}紀念明信片`,
+                stars: exp.isRareGift ? 5 : 4,
+                senderName: playerName,
+                creatures: [
+                  {
+                    variety: exp.seedlingVariety || 'red',
+                    decor: exp.seedlingDecor || 'roadside',
+                    hasDecor: true
+                  }
+                ],
+                createdAt: new Date().toLocaleDateString('zh-TW')
+              },
+              ...prev
+            ]);
+          }}
+          onOpenRoster={() => {
+            setIsGardenOpen(false);
+            setExpeditionsInitialTab('degua');
+            setIsExpeditionsOpen(true);
+          }}
           onOpenPlanting={() => {
             setIsGardenOpen(false);
             setShowPlantingDrawer(true);
@@ -3830,6 +4004,10 @@ export const App: React.FC = () => {
           onOpenPlanter={() => {
             setIsGardenOpen(false);
             setIsPlanterOpen(true);
+          }}
+          onOpenArCamera={() => {
+            setIsGardenOpen(false);
+            setIsArCameraOpen(true);
           }}
           onCloseGarden={() => setIsGardenOpen(false)}
         />
@@ -3855,6 +4033,7 @@ export const App: React.FC = () => {
         <MushroomBattleModal
           mushroom={selectedMushroom}
           creatures={creatures}
+          playerLevel={playerLevel}
           onJoinMushroomBattle={handleJoinMushroomBattle}
           onNavigateToMap={(m) => {
             setSelectedMushroom(null);

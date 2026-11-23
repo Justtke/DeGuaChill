@@ -13,7 +13,8 @@ export type DecorCategory =
   | 'bakery'        // 🥖 麵包店 (法國麵包(稀有) / 法國麵包 / 現烤點心麵包)
   | 'dessert'       // 🧁 甜點店 (馬卡龍 / 甜甜圈)
   | 'cinema'        // 🍿 電影院 (爆米花 & 3D眼鏡)
-  | 'pharmacy'      // 🪥 藥局 (牙刷)
+  | 'pharmacy'      // 🪥 藥局 (牙刷(稀有) / 牙刷)
+  | 'stadium'       // 🏟️ 體育館 (體育館紀念品(稀有) / 運動應援)
   | 'zoo'           // 🦁 動物園 (蒲公英)
   | 'forest'        // 🌲 森林 (獨角仙 / 橡實)
   | 'waterside'     // 🎣 水邊 (路亞假餌(稀有) / 路亞假餌)
@@ -104,10 +105,12 @@ export interface DeGuaCreature {
   feedCount?: number; // 今日餵食階段 (0 ~ 6；達 6/6 採收後變光禿禿)
   lastFedAt?: number | null; // 上次餵食時間（每 2 小時恢復 1 格飢餓度）
   bareAt?: number | null; // 變成光禿禿的時間（等待 6 小時長回葉子）
-  bareWalkSteps?: number; // 光禿禿後行走步數（約 2,000 步長回葉子）
+  bareWalkSteps?: number; // 光禿禿後行走步數（每步縮短 12 秒，走約 1,800 步或等 6 小時長回葉子）
   squadWalkSteps?: number; // 隊伍中葉子累積步數（約 1,700~2,000 步變花苞）
+  stepsWalked?: number; // 一起走過的累計步數
   budBonusPending?: boolean; // 由「花苞」開花，採收可得雙倍花瓣 (+2)
   isFavorite?: boolean; // 是否標記為最愛（☆）
+  isRareDecor?: boolean; // 是否已進化／換上亮晶晶「稀有飾品」
   inSquad: boolean;
   busyState: 'free' | 'expedition' | 'mushroom';
   createdAt: number;
@@ -149,8 +152,10 @@ export interface ExpeditionItem {
   fruitName?: string;
   nectarColor?: PetalColor;
   nectarAmount?: number;
-  // 若為滿4心拿禮物探險
+  // 若為滿4心拿禮物或稀有飾品金色禮物探險
   targetCreatureId?: string;
+  isRareGift?: boolean;
+  rareDecorSetId?: string;
   // 進行中狀態與精確去/回程時間追蹤
   status: 'available' | 'active' | 'completed';
   assignedCreatureIds: string[];
@@ -767,6 +772,47 @@ export interface PostcardItem {
   createdAt: string;
 }
 
+/**
+ * 依據官方《Pikmin Bloom》玩家等級計算散步隊伍上限（Lv.55 達上限 40 顆）：
+ * Lv.1~6: 2 | Lv.7~8: 15 | Lv.9~11: 20 | Lv.12~14: 25 | Lv.15~18: 30
+ * Lv.19~54: 31 起跳每 4 級 +1 | Lv.55+: 40
+ */
+export function getSquadLimitForLevel(level: number): number {
+  const lv = Math.max(1, Math.floor(level));
+  if (lv <= 6) return 2;
+  if (lv <= 8) return 15;
+  if (lv <= 11) return 20;
+  if (lv <= 14) return 25;
+  if (lv <= 18) return 30;
+  if (lv <= 54) return 31 + Math.floor((lv - 19) / 4);
+  return 40;
+}
+
+/**
+ * 依據《Pikmin Bloom》計算打蘑菇最多可派遣地瓜球上限（Lv.8 解鎖、Lv.20 起逐步開放至 Lv.26 達上限 40 顆）
+ */
+export function getMushroomSquadLimitForLevel(level: number): number {
+  const lv = Math.max(1, Math.floor(level));
+  if (lv < 8) return 0;
+  if (lv <= 9) return 10;
+  if (lv <= 11) return 15;
+  if (lv <= 13) return 20;
+  if (lv <= 16) return 25;
+  if (lv <= 19) return 30;
+  if (lv <= 21) return 32;
+  if (lv <= 23) return 35;
+  if (lv <= 25) return 38;
+  return 40;
+}
+
+export interface RareDecorCategoryProgress {
+  level: number; // 0=未解鎖(或未達門檻), 1+=已開啟進度條；每次升級發放 1 個稀有禮物名額
+  points: number;
+  pendingGifts: number;
+}
+
+export const DEFAULT_CREATURE_STORAGE_CAP = 550;
+
 export const VARIETY_CATALOG: Record<DeGuaVariety, VarietyMeta> = {
   red: {
     id: 'red',
@@ -854,6 +900,7 @@ export const DECOR_CATALOG: Record<DecorCategory, DecorMeta> = {
   dessert: { id: 'dessert', name: '馬卡龍與甜甜圈', placeCategory: '甜點店', icon: '🧁' },
   cinema: { id: 'cinema', name: '爆米花與立體眼鏡', placeCategory: '電影院', icon: '🍿' },
   pharmacy: { id: 'pharmacy', name: '可愛牙刷組', placeCategory: '藥局', icon: '🪥' },
+  stadium: { id: 'stadium', name: '應援泡棉鑰匙圈', placeCategory: '體育館', icon: '🏟️' },
   zoo: { id: 'zoo', name: '草原蒲公英', placeCategory: '動物園', icon: '🦁' },
   forest: { id: 'forest', name: '獨角仙與橡實', placeCategory: '森林', icon: '🌲' },
   waterside: { id: 'waterside', name: '路亞假餌', placeCategory: '水邊', icon: '🎣' },
@@ -885,6 +932,7 @@ export const ALL_DECOR_CATEGORIES: DecorCategory[] = [
   'dessert',
   'cinema',
   'pharmacy',
+  'stadium',
   'zoo',
   'forest',
   'waterside',
@@ -932,9 +980,17 @@ export const DECOR_SUBSETS_CATALOG: Record<DecorCategory, DecorSetEntry[]> = {
     { setId: 'ds_donut', setName: '糖霜甜甜圈', emoji: '🍩', varieties: SEVEN_COLORS }
   ],
   cinema: [{ setId: 'cn_popcorn', setName: '電影爆米花・飲料', emoji: '🍿', varieties: SEVEN_COLORS }],
-  pharmacy: [{ setId: 'ph_brush', setName: '日常牙刷組', emoji: '🪥', varieties: SEVEN_COLORS }],
+  pharmacy: [
+    { setId: 'ph_brush_rare', setName: '牙刷組（稀有）', emoji: '🪥✨', isRare: true, varieties: SEVEN_COLORS },
+    { setId: 'ph_brush', setName: '日常牙刷組', emoji: '🪥', varieties: SEVEN_COLORS }
+  ],
+  stadium: [
+    { setId: 'sd_stadium_rare', setName: '體育館紀念品（稀有）', emoji: '🏟️✨', isRare: true, varieties: SEVEN_COLORS },
+    { setId: 'sd_stadium', setName: '體育館鑰匙圈', emoji: '🏟️', varieties: THREE_COLORS }
+  ],
   zoo: [{ setId: 'zo_dandelion', setName: '蒲公英絮花', emoji: '🦁', varieties: SEVEN_COLORS }],
   forest: [
+    { setId: 'fr_beetle_rare', setName: '獨角仙＆橡實（稀有）', emoji: '🪲✨', isRare: true, varieties: SEVEN_COLORS },
     { setId: 'fr_beetle', setName: '獨角仙', emoji: '🪲', varieties: SEVEN_COLORS },
     { setId: 'fr_acorn', setName: '森林橡實', emoji: '🌰', varieties: SEVEN_COLORS }
   ],
@@ -946,6 +1002,7 @@ export const DECOR_SUBSETS_CATALOG: Record<DecorCategory, DecorSetEntry[]> = {
   art_gallery: [{ setId: 'ag_frame', setName: '美術館典藏相框', emoji: '🖼️', varieties: SEVEN_COLORS }],
   airport: [{ setId: 'ap_plane', setName: '玩具螺旋槳飛機', emoji: '✈️', varieties: SEVEN_COLORS }],
   station: [
+    { setId: 'st_ticket_rare', setName: '車票與紙火車（稀有）', emoji: '🎫✨', isRare: true, varieties: SEVEN_COLORS },
     { setId: 'st_train', setName: '紙火車', emoji: '🚂', varieties: SEVEN_COLORS },
     { setId: 'st_ticket', setName: '立體站長車票', emoji: '🎫', varieties: SEVEN_COLORS }
   ],
@@ -956,6 +1013,7 @@ export const DECOR_SUBSETS_CATALOG: Record<DecorCategory, DecorSetEntry[]> = {
     { setId: 'cv_snack', setName: '超商零食・茶葉蛋', emoji: '🏪', varieties: SEVEN_COLORS }
   ],
   supermarket: [
+    { setId: 'sm_banana_rare', setName: '香蕉＆蘑菇（稀有）', emoji: '🍌✨', isRare: true, varieties: SEVEN_COLORS },
     { setId: 'sm_mushroom', setName: '生鮮蘑菇袋', emoji: '🍄', varieties: SEVEN_COLORS },
     { setId: 'sm_banana', setName: '香蕉水果串', emoji: '🍌', varieties: SEVEN_COLORS }
   ],

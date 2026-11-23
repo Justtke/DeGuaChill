@@ -15,7 +15,7 @@ import {
  *    - 快速組（白玉 white）：speedFactor = 0.5（去程 8.0 m/s、基礎搬運 2.0 m/s）
  *    - 標準組（紅/黃/藍）：speedFactor = 1.0（去程 4.0 m/s、基礎搬運 1.0 m/s）
  *    - 重裝組（紫/岩石）：speedFactor = 1.25（去程 3.2 m/s、基礎搬運 0.8 m/s）
- * 2. 單隻力量（carryStrength）：紫 5、岩石 3、其餘 1。
+ * 2. 單顆力量（carryStrength）：紫 5、岩石 3、其餘 1。
  * 3. 去程時間 = ceil((單程距離 / 去程均速) / 60) 分鐘；回程時間 = ceil((單程距離 / (基礎搬運均速 × 總力量 / 需求力量)) / 60) 分鐘。
  */
 export function getMemberSpeedFactor(variety: DeGuaVariety, allWinged: boolean): number {
@@ -181,7 +181,9 @@ export function normalizeExpeditionItem(
     const variety = exp.seedlingVariety ?? target?.variety ?? 'red';
     return {
       ...exp,
-      title: `${getSeedlingPotTitle(variety, false).replace('瓜糰', '')}禮品`,
+      title: exp.isRareGift
+        ? `${getSeedlingPotTitle(variety, false).replace('瓜糰', '')}稀有禮品`
+        : `${getSeedlingPotTitle(variety, false).replace('瓜糰', '')}禮品`,
       placeName: cleanArea,
       requiredStrength: 1,
       maxCarriers: 1,
@@ -494,52 +496,258 @@ export function buildGiftExpeditionItem(
 }
 
 /**
- * 測試期間補齊滿編 40 隻各色地瓜球，以便完整測試各種力量與派出上限組合
+ * 測試期間建立至少 14 項含資料庫全 7 色瓜糰、10,000 步大瓜糰與多種重量水果的探險清單
  */
-export function ensure40TestCreatures(
-  existing: DeGuaCreature[],
-  baseLat = 25.033,
-  baseLng = 121.535
-): DeGuaCreature[] {
-  if (existing.length >= 40) return existing;
-  const order: DeGuaVariety[] = ['winged', 'white', 'purple', 'rock', 'red', 'yellow', 'blue'];
-  const decors: DecorCategory[] = [
-    'roadside',
-    'bubble_tea',
-    'convenience',
-    'park',
-    'bakery',
-    'station',
-    'night_market'
+export function createComprehensiveTestExpeditions(
+  baseLat = 25.0553,
+  baseLng = 121.5204
+): ExpeditionItem[] {
+  const now = Date.now();
+  const expDay = 2 * 86_400_000 + 12 * 3600_000;
+
+  const seedlingSpecs: Array<{
+    id: string;
+    variety: DeGuaVariety;
+    decor: DecorCategory;
+    isHuge: boolean;
+    area: string;
+    dLat: number;
+    dLng: number;
+    dist: number;
+  }> = [
+    { id: 'exp_test_huge_1', variety: 'red', decor: 'bakery', isHuge: true, area: '鶯歌區', dLat: 0.0042, dLng: -0.0052, dist: 580 },
+    { id: 'exp_test_huge_2', variety: 'yellow', decor: 'roadside', isHuge: true, area: '大安區', dLat: -0.0061, dLng: 0.0048, dist: 790 },
+    { id: 'exp_test_red', variety: 'red', decor: 'night_market', isHuge: false, area: '信義區', dLat: -0.0082, dLng: 0.0112, dist: 1420 },
+    { id: 'exp_test_yellow', variety: 'yellow', decor: 'bubble_tea', isHuge: false, area: '中山區', dLat: 0.0034, dLng: 0.0065, dist: 640 },
+    { id: 'exp_test_blue', variety: 'blue', decor: 'waterside', isHuge: false, area: '大同區', dLat: 0.0022, dLng: -0.0074, dist: 760 },
+    { id: 'exp_test_purple', variety: 'purple', decor: 'supermarket', isHuge: false, area: '中正區', dLat: -0.0094, dLng: -0.0026, dist: 1080 },
+    { id: 'exp_test_white', variety: 'white', decor: 'park', isHuge: false, area: '大安區', dLat: -0.0124, dLng: 0.0085, dist: 1680 },
+    { id: 'exp_test_winged', variety: 'winged', decor: 'station', isHuge: false, area: '松山區', dLat: -0.0018, dLng: 0.0142, dist: 1480 },
+    { id: 'exp_test_rock', variety: 'rock', decor: 'hair_salon', isHuge: false, area: '萬華區', dLat: -0.0102, dLng: -0.0114, dist: 1590 },
+    { id: 'exp_test_stadium', variety: 'blue', decor: 'stadium', isHuge: false, area: '松山區', dLat: -0.0025, dLng: 0.0175, dist: 1850 }
   ];
-  const districts = ['大安區', '中山區', '大同區', '信義區', '中正區', '鶯歌區'];
-  const out = [...existing];
+
+  const seedlingExps: ExpeditionItem[] = seedlingSpecs.map((s, idx) => {
+    const specs = getSeedlingExpeditionSpecs(s.variety, s.isHuge, idx + 7);
+    return {
+      id: s.id,
+      kind: 'seedling',
+      title: getSeedlingPotTitle(s.variety, s.isHuge),
+      placeName: s.area,
+      lat: baseLat + s.dLat,
+      lng: baseLng + s.dLng,
+      distanceMeters: s.dist,
+      requiredStrength: specs.requiredStrength,
+      maxCarriers: specs.maxCarriers,
+      weightGrams: specs.weightGrams,
+      discoveredAt: now - (idx + 1) * 1800_000,
+      expiresAt: now + expDay,
+      seedlingVariety: s.variety,
+      seedlingDecor: s.decor,
+      seedlingIsHuge: s.isHuge,
+      status: 'available',
+      assignedCreatureIds: []
+    };
+  });
+
+  const fruitSpecs: Array<{
+    id: string;
+    emoji: string;
+    name: string;
+    color: PetalColor;
+    weight: number;
+    area: string;
+    dLat: number;
+    dLng: number;
+    dist: number;
+    reqStrOverride?: number;
+    maxCarriersOverride?: number;
+  }> = [
+    { id: 'exp_fruit_apple', emoji: '🍏', name: '青蘋果', color: 'white', weight: 321, area: '大安區', dLat: -0.0075, dLng: 0.0072, dist: 940 },
+    { id: 'exp_fruit_strawberry', emoji: '🍓', name: '草莓', color: 'red', weight: 120, area: '中山區', dLat: 0.0046, dLng: 0.0088, dist: 820 },
+    { id: 'exp_fruit_lemon', emoji: '🍋', name: '檸檬', color: 'yellow', weight: 268, area: '大同區', dLat: 0.0019, dLng: -0.0058, dist: 610 },
+    { id: 'exp_fruit_blueberry', emoji: '🫐', name: '藍莓', color: 'blue', weight: 144, area: '信義區', dLat: -0.0068, dLng: 0.0138, dist: 1520 },
+    { id: 'exp_fruit_watermelon', emoji: '🍉', name: '大西瓜', color: 'red', weight: 880, area: '三重區', dLat: 0.0082, dLng: -0.0155, dist: 1920, reqStrOverride: 16, maxCarriersOverride: 32 }
+  ];
+
+  const fruitExps: ExpeditionItem[] = fruitSpecs.map((f, idx) => {
+    const specs = getFruitExpeditionSpecs(f.color, f.weight);
+    return {
+      id: f.id,
+      kind: 'fruit',
+      title: f.name,
+      placeName: f.area,
+      lat: baseLat + f.dLat,
+      lng: baseLng + f.dLng,
+      distanceMeters: f.dist,
+      requiredStrength: f.reqStrOverride ?? specs.requiredStrength,
+      maxCarriers: f.maxCarriersOverride ?? specs.maxCarriers,
+      weightGrams: f.weight,
+      discoveredAt: now - (idx + 3) * 2400_000,
+      expiresAt: now + expDay,
+      fruitEmoji: f.emoji,
+      fruitName: f.name,
+      nectarColor: f.color,
+      nectarAmount: specs.nectarAmount,
+      status: 'available',
+      assignedCreatureIds: []
+    };
+  });
+
+  return [...seedlingExps, ...fruitExps];
+}
+
+/**
+ * 測試期間建立與維持「隊伍內 40 顆 + 待機中 100 顆 = 140 顆」全色系測試編制，
+ * 且預先集滿餐廳／麵包店一般飾品圖鑑以便直接測試稀有飾品點數升級條與滿編 40 顆派遣。
+ */
+export function ensureTestSquadAndStandby(
+  existing: DeGuaCreature[],
+  baseLat = 25.0553,
+  baseLng = 121.5204
+): DeGuaCreature[] {
+  const targetSquad = 40;
+  const targetStandby = 100;
+  const targetTotal = targetSquad + targetStandby;
+  const order: DeGuaVariety[] = ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'];
+  const decors: DecorCategory[] = [
+    'bakery',
+    'night_market',
+    'bubble_tea',
+    'roadside',
+    'park',
+    'waterside',
+    'station',
+    'supermarket',
+    'hair_salon',
+    'pharmacy',
+    'forest',
+    'stadium'
+  ];
+  const districts = ['大安區', '中山區', '大同區', '信義區', '中正區', '鶯歌區', '板橋區'];
+
+  const baseList = existing.map((c, idx) => ({
+    ...c,
+    placeName: formatDistrictOnlyPlaceName(c.placeName, c.lat, c.lng),
+    stepsWalked: c.stepsWalked ?? 1200 + (idx % 12) * 850
+  }));
+
+  let inSquadCount = baseList.filter((c) => c.inSquad).length;
+  let standbyCount = baseList.filter((c) => !c.inSquad).length;
+  const out: DeGuaCreature[] = [...baseList];
   let seq = 1;
-  while (out.length < 40) {
-    const v = order[(out.length) % order.length];
-    const d = decors[(out.length) % decors.length];
-    const district = districts[(out.length) % districts.length];
-    const isNearGift = seq === 2;
-    const isReadyGift = seq === 1;
+
+  // 若既有少於 40 顆在隊伍中，補足 inSquad = true 直到 40 顆
+  while (inSquadCount < targetSquad) {
+    const v = order[(inSquadCount + seq) % order.length];
+    const d = decors[seq % decors.length];
+    const district = districts[seq % districts.length];
+    const subsets = (DECOR_SUBSETS_CATALOG[d] || []).filter((s) => !s.isRare);
+    const subSetId = subsets[0]?.setId;
+    const isGiftReady = seq === 1 || seq === 2;
+    const isDecorated = !isGiftReady && (seq <= 16 || seq % 3 === 0);
+
     out.push({
-      id: `dg_test_${seq}_${v}`,
+      id: `dg_sq_${seq}_${v}_${out.length}`,
       name: `${VARIETY_CATALOG[v].name.slice(0, 2)}${out.length + 1}`,
       variety: v,
       decor: d,
+      decorSetId: subSetId,
       placeName: district,
-      lat: baseLat + ((seq % 5) - 2) * 0.0012,
-      lng: baseLng + ((seq % 7) - 3) * 0.0012,
-      friendship: isReadyGift ? 400 : isNearGift ? 399 : 120 + (seq % 4) * 65,
-      hasDecor: seq % 4 === 0,
-      giftExpeditionCreated: isReadyGift || seq % 4 === 0,
-      leafStage: seq % 3 === 0 ? 'flower' : seq % 2 === 0 ? 'bud' : 'leaf',
+      lat: baseLat + ((seq % 7) - 3) * 0.0014,
+      lng: baseLng + ((seq % 5) - 2) * 0.0014,
+      friendship: isGiftReady ? 400 : isDecorated ? 420 + (seq % 5) * 45 : 140 + (seq % 4) * 60,
+      hasDecor: isDecorated,
+      giftExpeditionCreated: isGiftReady || isDecorated,
+      leafStage: seq % 4 === 0 ? 'flower' : seq % 2 === 0 ? 'bud' : 'leaf',
       flowerColor: (['white', 'yellow', 'red', 'blue'] as PetalColor[])[seq % 4],
       pluckCountToday: 0,
+      feedCount: seq % 4 === 0 ? 1 : 0,
+      stepsWalked: 2400 + seq * 680,
+      isFavorite: seq % 6 === 0,
       inSquad: true,
       busyState: 'free',
       createdAt: Date.now() - seq * 3600_000
     });
+    inSquadCount++;
     seq++;
   }
+
+  // 確保麵包店(bakery)與餐廳(night_market)一般全系列飾品都在待機池被集齊以供實測稀有飾品進度條
+  const preCompleteCategories: DecorCategory[] = ['bakery', 'night_market'];
+  for (const pCat of preCompleteCategories) {
+    const nonRareSubs = (DECOR_SUBSETS_CATALOG[pCat] || []).filter((s) => !s.isRare);
+    for (const sub of nonRareSubs) {
+      const reqVars = sub.varieties || order;
+      for (const rv of reqVars) {
+        const alreadyHas = out.some(
+          (c) => c.hasDecor && c.decor === pCat && c.variety === rv && (!c.decorSetId || c.decorSetId === sub.setId)
+        );
+        if (!alreadyHas && standbyCount < targetStandby) {
+          out.push({
+            id: `dg_rareseed_${pCat}_${sub.setId}_${rv}`,
+            name: `${sub.setName.slice(0, 4)}・${VARIETY_CATALOG[rv].name.slice(0, 2)}`,
+            variety: rv,
+            decor: pCat,
+            decorSetId: sub.setId,
+            placeName: pCat === 'bakery' ? '鶯歌區' : '信義區',
+            lat: baseLat + (order.indexOf(rv) - 3) * 0.002,
+            lng: baseLng + (preCompleteCategories.indexOf(pCat) - 0.5) * 0.003,
+            friendship: 520,
+            hasDecor: true,
+            giftExpeditionCreated: true,
+            leafStage: 'flower',
+            flowerColor: (['white', 'yellow', 'red', 'blue'] as PetalColor[])[seq % 4],
+            pluckCountToday: 0,
+            feedCount: 0,
+            stepsWalked: 8500 + seq * 420,
+            isFavorite: rv === 'rock' && pCat === 'bakery',
+            inSquad: false,
+            busyState: 'free',
+            createdAt: Date.now() - (50 + seq) * 3600_000
+          });
+          standbyCount++;
+          seq++;
+        }
+      }
+    }
+  }
+
+  // 補齊剩餘待機地瓜球至 100 顆（共 140 顆）
+  while (standbyCount < targetStandby || out.length < targetTotal) {
+    const v = order[seq % order.length];
+    const d = decors[(seq + 3) % decors.length];
+    const district = districts[(seq + 2) % districts.length];
+    const subsets = (DECOR_SUBSETS_CATALOG[d] || []).filter((s) => !s.isRare);
+    const subSetId = subsets[0]?.setId;
+    const isDecorated = seq % 2 === 0;
+    out.push({
+      id: `dg_sb_${seq}_${v}`,
+      name: `${VARIETY_CATALOG[v].name.slice(0, 2)}#${seq}`,
+      variety: v,
+      decor: d,
+      decorSetId: subSetId,
+      placeName: district,
+      lat: baseLat + ((seq % 9) - 4) * 0.0022,
+      lng: baseLng + ((seq % 8) - 4) * 0.0022,
+      friendship: isDecorated ? 400 + (seq % 6) * 60 : 80 + (seq % 4) * 75,
+      hasDecor: isDecorated,
+      giftExpeditionCreated: isDecorated,
+      leafStage: seq % 5 === 0 ? 'flower' : seq % 2 === 0 ? 'bud' : 'leaf',
+      flowerColor: (['white', 'yellow', 'red', 'blue'] as PetalColor[])[seq % 4],
+      pluckCountToday: 0,
+      feedCount: 0,
+      stepsWalked: 950 + seq * 540,
+      isFavorite: seq % 11 === 0,
+      inSquad: false,
+      busyState: 'free',
+      createdAt: Date.now() - (80 + seq) * 3600_000
+    });
+    standbyCount++;
+    seq++;
+  }
+
   return out;
 }
+
+export const ensure40TestCreatures = ensureTestSquadAndStandby;
