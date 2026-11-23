@@ -8,6 +8,7 @@ import {
   DecorCategory,
   DECOR_CATALOG,
   DeGuaCreature,
+  DeGuaVariety,
   ExpeditionItem,
   ExtraFryerSlotInventory,
   ExtraFryerSlotType,
@@ -70,7 +71,9 @@ import {
 } from './services/pikminLifecycleService';
 import {
   buildGiftExpeditionItem,
+  ensure40TestCreatures,
   ExpeditionDurationEstimate,
+  formatDistrictOnlyPlaceName,
   normalizeExpeditionItem
 } from './services/expeditionService';
 import {
@@ -258,7 +261,7 @@ const INITIAL_EXPEDITIONS: ExpeditionItem[] = [
     id: 'exp_init_1',
     kind: 'seedling',
     title: '白色瓜糰',
-    placeName: '街角路邊小徑',
+    placeName: '大安區',
     lat: 25.0361,
     lng: 121.5318,
     distanceMeters: 420,
@@ -277,7 +280,7 @@ const INITIAL_EXPEDITIONS: ExpeditionItem[] = [
     id: 'exp_init_2',
     kind: 'fruit',
     title: '青蘋果',
-    placeName: '散步公園步道',
+    placeName: '大安區',
     lat: 25.0378,
     lng: 121.5396,
     distanceMeters: 640,
@@ -522,7 +525,11 @@ export const App: React.FC = () => {
   // 瓜糰、額外欄位道具、地瓜球、每日生命週期狀態（凌晨 4 點重置 / 8 小時變花苞 / 步數結苞 / 21:00~04:00 鎖定）
   const [seedlings, setSeedlings] = useState<Seedling[]>(() => {
     const raw = localStorage.getItem('dg_seedlings_v2');
-    return raw ? (JSON.parse(raw) as Seedling[]) : INITIAL_SEEDLINGS;
+    const parsed = raw ? (JSON.parse(raw) as Seedling[]) : INITIAL_SEEDLINGS;
+    return parsed.map((s) => ({
+      ...s,
+      placeName: formatDistrictOnlyPlaceName(s.placeName, s.lat, s.lng)
+    }));
   });
   const [extraSlotInventory, setExtraSlotInventory] = useState<ExtraFryerSlotInventory>(() => {
     try {
@@ -555,7 +562,16 @@ export const App: React.FC = () => {
   });
   const [creatures, setCreatures] = useState<DeGuaCreature[]>(() => {
     const raw = localStorage.getItem('dg_creatures_v2');
-    return raw ? (JSON.parse(raw) as DeGuaCreature[]) : INITIAL_CREATURES;
+    const parsed = raw ? (JSON.parse(raw) as DeGuaCreature[]) : INITIAL_CREATURES;
+    if (!localStorage.getItem('dg_test_40_squad_v1')) {
+      try {
+        localStorage.setItem('dg_test_40_squad_v1', '1');
+      } catch {
+        // ignore
+      }
+      return ensure40TestCreatures(parsed, myLat, myLng);
+    }
+    return parsed.length < 40 ? ensure40TestCreatures(parsed, myLat, myLng) : parsed;
   });
   const creaturesRef = useRef<DeGuaCreature[]>(creatures);
   creaturesRef.current = creatures;
@@ -1424,18 +1440,22 @@ export const App: React.FC = () => {
   };
 
   const handlePluckSeedling = (seedling: Seedling) => {
-    const vMeta = VARIETY_CATALOG[seedling.variety];
+    const allVarieties: DeGuaVariety[] = ['red', 'yellow', 'blue', 'purple', 'white', 'winged', 'rock'];
+    const hatchedVariety = seedling.isHuge
+      ? allVarieties[Math.floor(Math.random() * allVarieties.length)]
+      : seedling.variety;
+    const vMeta = VARIETY_CATALOG[hatchedVariety];
     const dMeta = DECOR_CATALOG[seedling.decor];
     const newCreature: DeGuaCreature = {
       id: `dg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: `${dMeta.icon}${vMeta.name}`,
-      variety: seedling.variety,
+      variety: hatchedVariety,
       decor: seedling.decor,
       decorSetId: seedling.decorSetId,
       placeName: seedling.placeName,
       lat: seedling.lat,
       lng: seedling.lng,
-      friendship: seedling.isHuge ? 400 : 100,
+      friendship: seedling.isHuge ? 0 : 100,
       hasDecor: seedling.isHuge,
       giftExpeditionCreated: seedling.isHuge,
       leafStage: 'leaf',
@@ -1734,12 +1754,13 @@ export const App: React.FC = () => {
       );
     } else if (exp.kind === 'seedling' && exp.seedlingVariety && exp.seedlingDecor) {
       const v = exp.seedlingVariety;
+      const cleanPlace = formatDistrictOnlyPlaceName(exp.placeName, exp.lat, exp.lng);
       const newSeed: Seedling = {
         id: `seed_${Date.now()}`,
         variety: v,
         decor: exp.seedlingDecor,
         isHuge: Boolean(exp.seedlingIsHuge),
-        placeName: exp.placeName,
+        placeName: cleanPlace,
         lat: exp.lat,
         lng: exp.lng,
         currentSteps: 0,
@@ -1750,7 +1771,7 @@ export const App: React.FC = () => {
         discoveredAt: Date.now()
       };
       setSeedlings((prev) => [newSeed, ...prev]);
-      showToast(`🍠 成功把「${exp.placeName}」的【${exp.title}】收進油鍋背包（全員友好度 +1）！`);
+      showToast(`🍠 成功把「${cleanPlace}」的【${exp.title}】收進油鍋背包（全員友好度 +1）！`);
     } else if (exp.kind === 'gift' && exp.targetCreatureId) {
       const decoratedOne = finRes.creatures.find((c) => c.id === exp.targetCreatureId);
       if (decoratedOne) {

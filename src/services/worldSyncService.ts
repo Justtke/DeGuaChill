@@ -11,7 +11,12 @@ import {
   PlantedFlowerCell
 } from '../types/game';
 import { getNearestRealLandmarkInfo } from './realMapService';
-import { getFruitExpeditionSpecs, getSeedlingExpeditionSpecs } from './expeditionService';
+import {
+  formatDistrictOnlyPlaceName,
+  getFruitExpeditionSpecs,
+  getSeedlingExpeditionSpecs,
+  getSeedlingPotTitle
+} from './expeditionService';
 
 export interface WorldDeltaState {
   flowers: Record<string, PlantedFlowerCell>;
@@ -434,8 +439,8 @@ export async function triggerDetectorScan(
     {
       id: `exp_seed_${now}_1`,
       kind: 'seedling',
-      title: isHuge ? '巨大瓜糰' : `${variety === 'red' ? '紅色' : variety === 'yellow' ? '黃色' : variety === 'blue' ? '藍色' : variety === 'purple' ? '紫色' : variety === 'white' ? '白色' : variety === 'winged' ? '粉紅' : '竹炭'}瓜糰`,
-      placeName: `${pickedPlace1.name} 附近`,
+      title: getSeedlingPotTitle(variety, isHuge),
+      placeName: formatDistrictOnlyPlaceName(pickedPlace1.name, pickedPlace1.lat, pickedPlace1.lng),
       lat: pickedPlace1.lat,
       lng: pickedPlace1.lng,
       distanceMeters: 85 + Math.floor(Math.random() * 140),
@@ -454,7 +459,7 @@ export async function triggerDetectorScan(
       id: `exp_fruit_${now}_2`,
       kind: 'fruit',
       title: fruit.name,
-      placeName: `${pickedPlace2.name} 附近`,
+      placeName: formatDistrictOnlyPlaceName(pickedPlace2.name, pickedPlace2.lat, pickedPlace2.lng),
       lat: pickedPlace2.lat,
       lng: pickedPlace2.lng,
       distanceMeters: 95 + Math.floor(Math.random() * 160),

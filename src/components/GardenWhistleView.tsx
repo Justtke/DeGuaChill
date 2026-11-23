@@ -168,10 +168,12 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
   const [floatingFX, setFloatingFX] = useState<FloatingFeedback[]>([]);
   const [nectarThrowWave, setNectarThrowWave] = useState<number>(0);
   const [giftPromptCreature, setGiftPromptCreature] = useState<DeGuaCreature | null>(null);
+  const [collectingReturnId, setCollectingReturnId] = useState<string | null>(null);
 
   const lastWhistleTapRef = useRef<number>(0);
   const gatherTimerRef = useRef<number | null>(null);
   const singleWhistleTimerRef = useRef<number | null>(null);
+  const collectReturnTimerRef = useRef<number | null>(null);
   const pluckLockRef = useRef<Record<string, number>>({});
 
   // 初始化＆持續更新每隻地瓜球在花草原上的漫步位置
@@ -201,10 +203,10 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
         const next: Record<string, RoamPoint> = {};
         squadCreatures.forEach((c) => {
           const cur = prev[c.id] || { xPct: 50, yPct: 44, facingRight: true };
-          const dx = (Math.random() - 0.5) * 26;
-          const dy = (Math.random() - 0.5) * 18;
-          const nextX = Math.max(15, Math.min(82, cur.xPct + dx));
-          const nextY = Math.max(24, Math.min(64, cur.yPct + dy));
+          const dx = (Math.random() - 0.5) * 28;
+          const dy = (Math.random() - 0.5) * 20;
+          const nextX = Math.max(14, Math.min(84, cur.xPct + dx));
+          const nextY = Math.max(26, Math.min(63, cur.yPct + dy));
           next[c.id] = {
             xPct: nextX,
             yPct: nextY,
@@ -213,10 +215,31 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
         });
         return next;
       });
-    }, 2300);
+    }, 2600);
 
     return () => window.clearInterval(timer);
   }, [squadCreatures, isGathered]);
+
+  useEffect(() => {
+    return () => {
+      if (collectReturnTimerRef.current) window.clearTimeout(collectReturnTimerRef.current);
+    };
+  }, []);
+
+  const handleTriggerCollectReturn = (retExp: ExpeditionItem) => {
+    if (collectingReturnId === retExp.id || !onClaimReturnedExpedition) return;
+    setCollectingReturnId(retExp.id);
+    if (collectReturnTimerRef.current) window.clearTimeout(collectReturnTimerRef.current);
+    collectReturnTimerRef.current = window.setTimeout(() => {
+      setCollectingReturnId(null);
+      onClaimReturnedExpedition(retExp.id);
+      spawnFloatingText(
+        retExp.kind === 'fruit' ? '🍯 精華已收入倉庫！+1 友好度' : '✨ 已收下戰利品！+1 友好度',
+        50,
+        42
+      );
+    }, 1020);
+  };
 
   const spawnFloatingText = (text: string, xPct: number, yPct: number) => {
     const id = `fx_${Date.now()}_${Math.random()}`;
@@ -513,9 +536,10 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
         </div>
       )}
 
-      {/* 探險完成回來！頂端通知小卡＋隊伍高舉戰利品集合草原（對照皮克敏圖 14） */}
+      {/* 探險完成回來！頂端通知小卡＋隊伍圍成圈一起端著戰利品集合草原（對照皮克敏：先旋轉浮起再收進來） */}
       {completedExpeditions.length > 0 && (() => {
         const retExp = completedExpeditions[0];
+        const isCollectingThis = collectingReturnId === retExp.id;
         const totalMs =
           retExp.completesAt && retExp.startedAt
             ? Math.max(60_000, retExp.completesAt - retExp.startedAt)
@@ -524,6 +548,21 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
         const carrierList = retExp.assignedCreatureIds
           .map((id) => creatures.find((c) => c.id === id))
           .filter((c): c is DeGuaCreature => Boolean(c));
+        const activeCarriers = carrierList.length > 0 ? carrierList.slice(0, 6) : squadCreatures.slice(0, 3);
+        const cradleSlots: Array<{ x: number; y: number; z: number; scale: number }> = [
+          { x: -24, y: -12, z: 1, scale: 0.92 },
+          { x: 24, y: -12, z: 1, scale: 0.92 },
+          { x: -34, y: 10, z: 3, scale: 1.0 },
+          { x: 34, y: 10, z: 3, scale: 1.0 },
+          { x: -12, y: 20, z: 4, scale: 1.05 },
+          { x: 14, y: 20, z: 4, scale: 1.05 }
+        ];
+        const collectAnimName =
+          retExp.kind === 'fruit'
+            ? 'expCollectSpinFloatFruit'
+            : retExp.kind === 'seedling'
+            ? 'expCollectSpinFloatSeedling'
+            : 'expCollectSpinFloatGift';
 
         return (
           <>
@@ -543,7 +582,9 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
                 fontSize: 15,
                 fontWeight: 700,
                 lineHeight: 1.45,
-                pointerEvents: 'none'
+                pointerEvents: 'none',
+                opacity: isCollectingThis ? 0.25 : 1,
+                transition: 'opacity 0.3s ease'
               }}
             >
               經過 <b style={{ fontWeight: 900 }}>{durParts.compactText}</b> 後，地瓜球從前往{' '}
@@ -551,17 +592,12 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
             </div>
 
             <button
-              onClick={() => {
-                if (onClaimReturnedExpedition) {
-                  onClaimReturnedExpedition(retExp.id);
-                  spawnFloatingText('✨ 已收下戰利品！+1 友好度', 50, 44);
-                }
-              }}
-              className="degua-bounce"
+              onClick={() => handleTriggerCollectReturn(retExp)}
+              disabled={isCollectingThis}
               style={{
                 position: 'absolute',
                 left: '50%',
-                top: '56%',
+                top: '57%',
                 transform: 'translate(-50%, -50%)',
                 zIndex: 45,
                 border: 'none',
@@ -570,72 +606,126 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                padding: 0
+                padding: 0,
+                perspective: 720
               }}
               title="點擊收下探險物品！"
             >
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {/* 團聚扛貨小隊 */}
-                <div style={{ display: 'flex', gap: 0, position: 'relative', marginBottom: -14 }}>
-                  {(carrierList.length > 0 ? carrierList.slice(0, 5) : squadCreatures.slice(0, 3)).map((c, idx) => (
-                    <div key={c.id} style={{ marginLeft: idx === 0 ? 0 : -14 }}>
+              {/* 地面立體投影 */}
+              <div
+                style={{
+                  position: 'relative',
+                  width: 144,
+                  height: 112,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    bottom: -4,
+                    transform: 'translateX(-50%)',
+                    width: 118,
+                    height: 26,
+                    borderRadius: '50%',
+                    background: 'radial-gradient(ellipse at center, rgba(20,83,45,0.44) 0%, rgba(20,83,45,0) 75%)',
+                    pointerEvents: 'none'
+                  }}
+                />
+
+                {/* 一起圍著扛起／端著回來的小隊 */}
+                {activeCarriers.map((c, idx) => {
+                  const slot = cradleSlots[idx % cradleSlots.length];
+                  return (
+                    <div
+                      key={c.id}
+                      style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: '54%',
+                        transform: `translate(calc(-50% + ${slot.x}px), calc(-50% + ${slot.y}px)) scale(${slot.scale})`,
+                        zIndex: slot.z,
+                        transition: 'transform 0.35s ease'
+                      }}
+                    >
                       <DeGuaCharacter
                         variety={c.variety}
                         decor={c.decor}
                         leafStage={c.leafStage}
                         flowerColor={c.flowerColor}
                         showDecor={c.hasDecor}
-                        size={46}
+                        size={44}
                         isBouncing={true}
                       />
                     </div>
-                  ))}
-                </div>
-              </div>
-              <div
-                style={{
-                  position: 'relative',
-                  background: 'radial-gradient(circle, rgba(254,249,195,0.85), rgba(255,255,255,0))',
-                  borderRadius: '50%',
-                  padding: 4
-                }}
-              >
-                <ExpeditionItemArtwork exp={retExp} isDecorCompleted={false} size={64} showDecorBadge={false} />
-                <span
+                  );
+                })}
+
+                {/* 被大家高舉在中央的戰利品：點擊時先旋轉浮上空再咻一聲收進來 */}
+                <div
                   style={{
-                    position: 'absolute',
-                    top: -4,
-                    right: -6,
-                    background: 'rgba(15,23,42,0.78)',
-                    color: '#FFFFFF',
-                    fontSize: 13,
-                    fontWeight: 900,
-                    width: 24,
-                    height: 24,
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '2px solid #FFFFFF'
+                    position: 'relative',
+                    zIndex: 10,
+                    marginTop: -20,
+                    transformStyle: 'preserve-3d',
+                    animation: isCollectingThis ? `${collectAnimName} 1.02s cubic-bezier(0.22, 1, 0.36, 1) forwards` : undefined
                   }}
                 >
-                  {Math.max(1, retExp.assignedCreatureIds.length)}
-                </span>
+                  <div
+                    style={{
+                      position: 'relative',
+                      background: 'radial-gradient(circle, rgba(254,249,195,0.88), rgba(255,255,255,0))',
+                      borderRadius: '50%',
+                      padding: 4
+                    }}
+                  >
+                    <ExpeditionItemArtwork exp={retExp} isDecorCompleted={false} size={64} showDecorBadge={false} />
+                    {!isCollectingThis && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: -4,
+                          right: -6,
+                          background: 'rgba(15,23,42,0.82)',
+                          color: '#FFFFFF',
+                          fontSize: 13,
+                          fontWeight: 900,
+                          width: 24,
+                          height: 24,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '2px solid #FFFFFF'
+                        }}
+                      >
+                        {Math.max(1, retExp.assignedCreatureIds.length)}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <span
-                style={{
-                  marginTop: 4,
-                  background: 'rgba(16, 185, 129, 0.94)',
-                  color: '#FFFFFF',
-                  fontSize: 12,
-                  fontWeight: 900,
-                  padding: '4px 12px',
-                  borderRadius: 99,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
-                }}
-              >
-                點此收下【{retExp.title}】
-              </span>
+
+              {!isCollectingThis && (
+                <span
+                  className="degua-bounce"
+                  style={{
+                    marginTop: 6,
+                    background: 'rgba(16, 185, 129, 0.95)',
+                    color: '#FFFFFF',
+                    fontSize: 12,
+                    fontWeight: 900,
+                    padding: '4px 13px',
+                    borderRadius: 99,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.22)'
+                  }}
+                >
+                  點此收下【{retExp.title}】
+                </span>
+              )}
             </button>
           </>
         );
@@ -669,9 +759,11 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
         />
       )}
 
-      {/* 自由散步的隊伍地瓜球（每一隻都會在花草原上走，滑花瓣可採收；滿 4 顆紅心且未拿禮物者頭上浮現 🎁 禮物氣泡） */}
+      {/* 自由散步的隊伍地瓜球（依 Y 座標呈現 3D 遠近景深比例與落地陰影，滑花瓣可採收；滿 4 顆紅心浮現 🎁 禮物氣泡） */}
       {squadCreatures.map((c) => {
         const pt = roamPositions[c.id] || { xPct: 50, yPct: 45, facingRight: true };
+        const clampedY = Math.max(24, Math.min(66, pt.yPct));
+        const depthScale = 0.72 + ((clampedY - 24) / 42) * 0.46;
         const canPluck = c.leafStage === 'flower';
         const isGiftExpeditionRunning = activeExpeditions.some(
           (e) => e.kind === 'gift' && e.targetCreatureId === c.id && e.status !== 'available'
@@ -690,10 +782,10 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
               position: 'absolute',
               left: `${pt.xPct}%`,
               top: `${pt.yPct}%`,
-              transform: `translate(-50%, -50%) scaleX(${pt.facingRight ? 1 : -1})`,
+              transform: `translate(-50%, -50%) scale(${pt.facingRight ? depthScale : -depthScale}, ${depthScale})`,
               transition: isGathered
-                ? 'left 0.45s cubic-bezier(0.22, 1, 0.36, 1), top 0.45s cubic-bezier(0.22, 1, 0.36, 1)'
-                : 'left 2.1s ease-in-out, top 2.1s ease-in-out',
+                ? 'left 0.45s cubic-bezier(0.22, 1, 0.36, 1), top 0.45s cubic-bezier(0.22, 1, 0.36, 1), transform 0.45s ease'
+                : 'left 2.55s cubic-bezier(0.37, 0, 0.63, 1), top 2.55s cubic-bezier(0.37, 0, 0.63, 1), transform 0.65s ease',
               zIndex: Math.round(pt.yPct) + 10,
               cursor: 'pointer',
               display: 'flex',
@@ -747,7 +839,17 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
               flowerColor={c.flowerColor}
               showDecor={c.hasDecor}
               size={60}
-              isBouncing={!isGathered || nectarThrowWave > 0}
+              isBouncing={true}
+            />
+            <div
+              style={{
+                width: 40,
+                height: 11,
+                marginTop: -10,
+                borderRadius: '50%',
+                background: 'radial-gradient(ellipse at center, rgba(20,83,45,0.42) 0%, rgba(20,83,45,0) 75%)',
+                pointerEvents: 'none'
+              }}
             />
             {canPluck && (
               <div
@@ -1388,6 +1490,21 @@ export const GardenWhistleView: React.FC<GardenWhistleViewProps> = ({
         @keyframes deguaWhistleRing {
           0% { transform: scale(0.4); opacity: 0.95; }
           100% { transform: scale(2.8); opacity: 0; }
+        }
+        @keyframes expCollectSpinFloatFruit {
+          0% { transform: translate(0px, 0px) rotateY(0deg) rotate(0deg) scale(1); opacity: 1; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.28)); }
+          46% { transform: translate(0px, -112px) rotateY(360deg) rotate(12deg) scale(1.36); opacity: 1; filter: drop-shadow(0 0 24px rgba(254,240,138,0.98)); }
+          100% { transform: translate(0px, 144px) rotateY(720deg) rotate(0deg) scale(0.22); opacity: 0; }
+        }
+        @keyframes expCollectSpinFloatSeedling {
+          0% { transform: translate(0px, 0px) rotateY(0deg) rotate(0deg) scale(1); opacity: 1; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.28)); }
+          46% { transform: translate(0px, -112px) rotateY(360deg) rotate(12deg) scale(1.34); opacity: 1; filter: drop-shadow(0 0 24px rgba(254,240,138,0.98)); }
+          100% { transform: translate(116px, 108px) rotateY(720deg) rotate(0deg) scale(0.22); opacity: 0; }
+        }
+        @keyframes expCollectSpinFloatGift {
+          0% { transform: translate(0px, 0px) rotateY(0deg) rotate(0deg) scale(1); opacity: 1; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.28)); }
+          46% { transform: translate(0px, -112px) rotateY(360deg) rotate(12deg) scale(1.36); opacity: 1; filter: drop-shadow(0 0 24px rgba(254,240,138,0.98)); }
+          100% { transform: translate(-20px, -210px) rotateY(720deg) rotate(0deg) scale(0.24); opacity: 0; }
         }
       `}</style>
     </div>

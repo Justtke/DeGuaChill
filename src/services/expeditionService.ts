@@ -117,6 +117,44 @@ export function getSeedlingExpeditionSpecs(
   return { requiredStrength: 1, maxCarriers: 2, weightGrams: 65 + jitter };
 }
 
+export function getSeedlingPotTitle(variety: DeGuaVariety, isHuge?: boolean): string {
+  if (isHuge) return '大瓜糰';
+  return VARIETY_CATALOG[variety]?.potName || '白色瓜糰';
+}
+
+export function formatDistrictOnlyPlaceName(
+  rawPlaceName?: string,
+  lat?: number,
+  lng?: number
+): string {
+  const cleaned = (rawPlaceName || '')
+    .replace(/附近/g, '')
+    .replace(/^(台灣|臺灣|臺北市|台北市|新北市|桃園市|臺中市|台中市|臺南市|台南市|高雄市)\s*/, '')
+    .trim();
+
+  // 優先抽取「XX區」
+  const districtMatch = cleaned.match(/([\u4e00-\u9fa5]{1,4}區)/);
+  if (districtMatch) return districtMatch[1];
+
+  // 次之抽取「XX市 / XX鎮 / XX鄉」
+  const cityMatch = cleaned.match(/([\u4e00-\u9fa5]{2,4}[市鎮鄉])/);
+  if (cityMatch) return cityMatch[1];
+
+  // 若原字串只是門市／景點名（例如「街角手搖茶飲店 附近」、「散步公園步道 附近」），依座標轉為所屬行政區
+  if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)) {
+    if (lat >= 25.042 && lat <= 25.085 && lng >= 121.502 && lng < 121.525) return '大同區';
+    if (lat >= 25.042 && lat <= 25.090 && lng >= 121.525 && lng <= 121.560) return '中山區';
+    if (lat >= 25.015 && lat < 25.046 && lng >= 121.520 && lng < 121.555) return '大安區';
+    if (lat >= 25.015 && lat < 25.055 && lng >= 121.555 && lng <= 121.590) return '信義區';
+    if (lat >= 25.025 && lat < 25.046 && lng >= 121.495 && lng < 121.520) return '中正區';
+    if (lat >= 24.93 && lat <= 24.98 && lng >= 121.32 && lng <= 121.38) return '鶯歌區';
+    if (lat >= 24.98 && lat <= 25.02 && lng >= 121.49 && lng <= 121.53) return '中和區';
+    return '大安區';
+  }
+
+  return cleaned || '大安區';
+}
+
 export function getFruitExpeditionSpecs(
   nectarColor: PetalColor,
   weightGrams: number
@@ -134,29 +172,43 @@ export function normalizeExpeditionItem(
   creatures: DeGuaCreature[],
   fallbackNowMs: number = Date.now()
 ): ExpeditionItem {
+  const cleanArea = formatDistrictOnlyPlaceName(exp.placeName, exp.lat, exp.lng);
+
   if (exp.kind === 'gift') {
     const target = exp.targetCreatureId
       ? creatures.find((c) => c.id === exp.targetCreatureId)
       : undefined;
+    const variety = exp.seedlingVariety ?? target?.variety ?? 'red';
     return {
       ...exp,
+      title: `${getSeedlingPotTitle(variety, false).replace('瓜糰', '')}禮品`,
+      placeName: cleanArea,
       requiredStrength: 1,
       maxCarriers: 1,
       weightGrams: exp.weightGrams ?? 50,
       discoveredAt: exp.discoveredAt ?? target?.createdAt ?? fallbackNowMs,
-      seedlingVariety: exp.seedlingVariety ?? target?.variety,
-      seedlingDecor: exp.seedlingDecor ?? target?.decor
+      seedlingVariety: variety,
+      seedlingDecor: exp.seedlingDecor ?? target?.decor ?? 'roadside'
     };
   }
 
   if (exp.kind === 'fruit') {
-    const defaultWeight = exp.nectarColor === 'blue' ? 144 : exp.fruitEmoji === '🍋' ? 210 : 321;
+    const defaultWeight = exp.nectarColor === 'blue' ? 144 : exp.fruitEmoji === '🍋' ? 268 : 321;
     const weightGrams = exp.weightGrams ?? defaultWeight;
     const specs = getFruitExpeditionSpecs(exp.nectarColor || 'white', weightGrams);
+    const shortFruitTitle = (exp.fruitName || exp.title || '青蘋果')
+      .replace(/^屏東四季/, '')
+      .replace(/^梨山蜜/, '')
+      .replace(/^拉拉山/, '')
+      .replace(/^高山(.*)串$/, '$1')
+      .replace(/^大花盛開大/, '');
     return {
       ...exp,
+      title: shortFruitTitle,
+      fruitName: shortFruitTitle,
+      placeName: cleanArea,
       weightGrams,
-      requiredStrength: exp.requiredStrength || specs.requiredStrength,
+      requiredStrength: Math.max(specs.requiredStrength, exp.requiredStrength || specs.requiredStrength),
       maxCarriers: exp.maxCarriers || specs.maxCarriers,
       nectarAmount: exp.nectarAmount ?? specs.nectarAmount,
       discoveredAt: exp.discoveredAt ?? fallbackNowMs,
@@ -164,17 +216,21 @@ export function normalizeExpeditionItem(
     };
   }
 
-  const variety = exp.seedlingVariety || 'white';
+  // 若是舊版「野生瓜糰」殘留資料，依預設轉成對應顏色（白色）或保留色種
+  const rawWasWild = exp.title === '野生瓜糰' || exp.title === '野生花苗';
+  const variety: DeGuaVariety = rawWasWild && !exp.seedlingVariety ? 'white' : (exp.seedlingVariety || 'white');
   const isHuge = Boolean(exp.seedlingIsHuge);
   const hashSeed = exp.id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
   const specs = getSeedlingExpeditionSpecs(variety, isHuge, hashSeed);
   return {
     ...exp,
+    title: getSeedlingPotTitle(variety, isHuge),
+    placeName: cleanArea,
     seedlingVariety: variety,
     seedlingDecor: exp.seedlingDecor || 'roadside',
     weightGrams: exp.weightGrams ?? specs.weightGrams,
-    requiredStrength: exp.requiredStrength > 1 || specs.requiredStrength === 1 ? (exp.requiredStrength || specs.requiredStrength) : specs.requiredStrength,
-    maxCarriers: exp.maxCarriers ?? specs.maxCarriers,
+    requiredStrength: specs.requiredStrength,
+    maxCarriers: specs.maxCarriers,
     discoveredAt: exp.discoveredAt ?? fallbackNowMs,
     expiresAt: exp.expiresAt ?? fallbackNowMs + 3 * 86400_000
   };
@@ -420,8 +476,8 @@ export function buildGiftExpeditionItem(
   return {
     id: `exp_gift_${creature.id}`,
     kind: 'gift',
-    title: `${VARIETY_CATALOG[creature.variety].potName.replace('瓜糰', '')}禮品`,
-    placeName: creature.placeName,
+    title: `${getSeedlingPotTitle(creature.variety, false).replace('瓜糰', '')}禮品`,
+    placeName: formatDistrictOnlyPlaceName(creature.placeName, creature.lat, creature.lng),
     lat: creature.lat,
     lng: creature.lng,
     distanceMeters: dist,
@@ -435,4 +491,55 @@ export function buildGiftExpeditionItem(
     status: 'available',
     assignedCreatureIds: [creature.id]
   };
+}
+
+/**
+ * 測試期間補齊滿編 40 隻各色地瓜球，以便完整測試各種力量與派出上限組合
+ */
+export function ensure40TestCreatures(
+  existing: DeGuaCreature[],
+  baseLat = 25.033,
+  baseLng = 121.535
+): DeGuaCreature[] {
+  if (existing.length >= 40) return existing;
+  const order: DeGuaVariety[] = ['winged', 'white', 'purple', 'rock', 'red', 'yellow', 'blue'];
+  const decors: DecorCategory[] = [
+    'roadside',
+    'bubble_tea',
+    'convenience',
+    'park',
+    'bakery',
+    'station',
+    'night_market'
+  ];
+  const districts = ['大安區', '中山區', '大同區', '信義區', '中正區', '鶯歌區'];
+  const out = [...existing];
+  let seq = 1;
+  while (out.length < 40) {
+    const v = order[(out.length) % order.length];
+    const d = decors[(out.length) % decors.length];
+    const district = districts[(out.length) % districts.length];
+    const isNearGift = seq === 2;
+    const isReadyGift = seq === 1;
+    out.push({
+      id: `dg_test_${seq}_${v}`,
+      name: `${VARIETY_CATALOG[v].name.slice(0, 2)}${out.length + 1}`,
+      variety: v,
+      decor: d,
+      placeName: district,
+      lat: baseLat + ((seq % 5) - 2) * 0.0012,
+      lng: baseLng + ((seq % 7) - 3) * 0.0012,
+      friendship: isReadyGift ? 400 : isNearGift ? 399 : 120 + (seq % 4) * 65,
+      hasDecor: seq % 4 === 0,
+      giftExpeditionCreated: isReadyGift || seq % 4 === 0,
+      leafStage: seq % 3 === 0 ? 'flower' : seq % 2 === 0 ? 'bud' : 'leaf',
+      flowerColor: (['white', 'yellow', 'red', 'blue'] as PetalColor[])[seq % 4],
+      pluckCountToday: 0,
+      inSquad: true,
+      busyState: 'free',
+      createdAt: Date.now() - seq * 3600_000
+    });
+    seq++;
+  }
+  return out;
 }

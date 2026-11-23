@@ -22,6 +22,7 @@ import {
   getDeterministicWorldAround,
   WorldDeltaState
 } from '../services/worldSyncService';
+import { getExpeditionProgressSnapshot } from '../services/expeditionService';
 import {
   buildAuthenticPikminMushroomSvg,
   MUSHROOM_CARD_SVG_DIMS
@@ -48,6 +49,8 @@ interface FlowerMapProps {
   mushrooms: MushroomNode[];
   activeExpeditions: ExpeditionItem[];
   followCrewMode?: boolean;
+  followExpedition?: ExpeditionItem | null;
+  hidePlayerAvatar?: boolean;
   followPayload?: {
     kind: ExpeditionItem['kind'];
     variety?: DeGuaVariety;
@@ -786,6 +789,8 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   bigFlowers,
   mushrooms,
   followCrewMode = false,
+  followExpedition = null,
+  hidePlayerAvatar = false,
   followPayload,
   allowPinchPerspectiveSwitch = false,
   onSelectBigFlower,
@@ -797,6 +802,7 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
   const shaderLayerRef = useRef<L.GridLayer | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const playerGroupRef = useRef<L.LayerGroup | null>(null);
+  const followMarkerRef = useRef<L.Marker | null>(null);
 
   const isMini = mode === 'mini_footprint';
   const isSurround = !isMini && cameraPerspective === 'surround';
@@ -1475,6 +1481,10 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       return;
     }
 
+    if (followCrewMode && followExpedition && recenterSeq === 0) {
+      return;
+    }
+
     if (cameraPerspective === 'overhead' && hasPannedOverheadRef.current) {
       return;
     }
@@ -1491,7 +1501,46 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
       map.panTo([myLat, myLng], { animate: !isMini, duration: 0.45 });
     }
     setViewCenter({ lat: myLat, lng: myLng });
-  }, [myLat, myLng, recenterSeq]);
+  }, [myLat, myLng, recenterSeq, followCrewMode, followExpedition]);
+
+  // 實景追蹤「查看地瓜球的情況」專用 60fps 連續平順推進引擎：徹底消除 1 秒一頓一頓的 jump，滑順走路與搬運！
+  useEffect(() => {
+    if (!followCrewMode || !followExpedition || isMini) return;
+    let rafId = 0;
+    let lastNodeSyncMs = 0;
+
+    const tick = () => {
+      const map = mapRef.current;
+      if (map) {
+        const now = Date.now();
+        const snap = getExpeditionProgressSnapshot(
+          followExpedition,
+          playerCoordRef.current.lat,
+          playerCoordRef.current.lng,
+          now
+        );
+        playerCoordRef.current = { lat: snap.currentLat, lng: snap.currentLng };
+        if (followMarkerRef.current) {
+          followMarkerRef.current.setLatLng([snap.currentLat, snap.currentLng]);
+        }
+        if (
+          !pinchRef.current.active &&
+          !overheadPanRef.current.active &&
+          (activePerspectiveRef.current === 'surround' || !hasPannedOverheadRef.current)
+        ) {
+          map.setView([snap.currentLat, snap.currentLng], map.getZoom(), { animate: false });
+        }
+        if (now - lastNodeSyncMs > 1600) {
+          lastNodeSyncMs = now;
+          setViewCenter({ lat: snap.currentLat, lng: snap.currentLng });
+        }
+      }
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [followCrewMode, followExpedition, isMini]);
 
   // 當使用者在蘑菇詳情點擊「📍 前往這裡」時，移動地圖焦點至該蘑菇並顯示名字氣泡框
   useEffect(() => {
@@ -1882,7 +1931,8 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     const pGroup = playerGroupRef.current;
     if (!pGroup) return;
     pGroup.clearLayers();
-    if (isMini) return;
+    followMarkerRef.current = null;
+    if (isMini || hidePlayerAvatar) return;
 
     if (isPlanting) {
       L.circle([myLat, myLng], {
@@ -1935,7 +1985,14 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
           iconSize: [110, 100],
           iconAnchor: [55, 58]
         });
-        L.marker([myLat, myLng], { icon: crewMarker, interactive: false, zIndexOffset: 900 }).addTo(pGroup);
+        const liveLat = followExpedition
+          ? getExpeditionProgressSnapshot(followExpedition, myLat, myLng, Date.now()).currentLat
+          : myLat;
+        const liveLng = followExpedition
+          ? getExpeditionProgressSnapshot(followExpedition, myLat, myLng, Date.now()).currentLng
+          : myLng;
+        const mkr = L.marker([liveLat, liveLng], { icon: crewMarker, interactive: false, zIndexOffset: 900 }).addTo(pGroup);
+        followMarkerRef.current = mkr;
         return;
       }
       // 計算小隊跟隨向量（永遠緊跟在玩家背後半圓！）
@@ -2068,7 +2125,14 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
         iconSize: [44, 44],
         iconAnchor: [22, 22]
       });
-      L.marker([myLat, myLng], { icon: overheadCrewIcon, interactive: false, zIndexOffset: 900 }).addTo(pGroup);
+      const liveLat = followExpedition
+        ? getExpeditionProgressSnapshot(followExpedition, myLat, myLng, Date.now()).currentLat
+        : myLat;
+      const liveLng = followExpedition
+        ? getExpeditionProgressSnapshot(followExpedition, myLat, myLng, Date.now()).currentLng
+        : myLng;
+      const mkr = L.marker([liveLat, liveLng], { icon: overheadCrewIcon, interactive: false, zIndexOffset: 900 }).addTo(pGroup);
+      followMarkerRef.current = mkr;
     } else {
       const overheadPlayerIcon = L.divIcon({
         className: 'pikmin-overhead-player',
@@ -2139,6 +2203,8 @@ export const FlowerMap: React.FC<FlowerMapProps> = ({
     quantizedRelYaw,
     quantizedHeading,
     followCrewMode,
+    hidePlayerAvatar,
+    followExpedition?.id,
     followPayload?.phase,
     followPayload?.kind,
     followPayload?.fruitEmoji

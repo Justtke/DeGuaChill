@@ -837,7 +837,7 @@ export const VARIETY_CATALOG: Record<DeGuaVariety, VarietyMeta> = {
   rock: {
     id: 'rock',
     name: '竹炭岩石球',
-    potName: '竹炭瓜糰',
+    potName: '灰色瓜糰',
     bodyColor: '#374151',
     spotColor: '#111827',
     potColor: '#4B5563',

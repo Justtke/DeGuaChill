@@ -956,7 +956,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
               }}
             >
               {filteredBagSeedlings.map((s) => {
-                const potLabel = s.isHuge ? '巨大瓜糰' : VARIETY_CATALOG[s.variety].potName;
+                const potLabel = s.isHuge ? '大瓜糰' : VARIETY_CATALOG[s.variety].potName;
                 const decorIcon = DECOR_CATALOG[s.decor]?.icon || '📍';
                 return (
                   <button
@@ -1269,7 +1269,7 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
                   <div style={{ fontSize: 23, fontWeight: 900, color: '#334155' }}>
                     {inspectedSeedling.isHuge
-                      ? '巨大瓜糰'
+                      ? '大瓜糰'
                       : VARIETY_CATALOG[inspectedSeedling.variety].potName}
                   </div>
                   <button
@@ -1287,6 +1287,22 @@ export const PlanterPackModal: React.FC<PlanterPackModalProps> = ({
                     {inspectedSeedling.isFavorite ? '★' : '☆'}
                   </button>
                 </div>
+
+                {inspectedSeedling.isHuge && (
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      color: '#B45309',
+                      background: '#FEF3C7',
+                      padding: '2px 10px',
+                      borderRadius: 99,
+                      marginTop: 4
+                    }}
+                  >
+                    ❓ 隨機顏色（起鍋揭曉）・直接附帶飾品
+                  </div>
+                )}
 
                 {/* 步數比例進度條 */}
                 <div style={{ fontSize: 15, fontWeight: 800, color: '#64748B', marginTop: 4 }}>

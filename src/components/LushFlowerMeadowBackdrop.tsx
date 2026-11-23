@@ -30,15 +30,24 @@ const HOME_PATCHES: FlowerPatchSpec[] = [
 ];
 
 const GARDEN_PATCHES: FlowerPatchSpec[] = [
-  { id: 20, xPct: 10, yPct: 18, scale: 0.62, kind: 'daisy_cluster', swayDelay: '0s' },
-  { id: 21, xPct: 24, yPct: 24, scale: 0.65, kind: 'pink_blossom', swayDelay: '0.4s', slow: true },
-  { id: 22, xPct: 70, yPct: 19, scale: 0.62, kind: 'lavender', swayDelay: '0.3s', slow: true },
-  { id: 23, xPct: 88, yPct: 22, scale: 0.68, kind: 'red_poppy', swayDelay: '0.5s' },
-  { id: 24, xPct: 12, yPct: 48, scale: 0.85, kind: 'blue_clover', swayDelay: '0.9s', slow: true },
-  { id: 25, xPct: 84, yPct: 46, scale: 0.88, kind: 'daisy_cluster', swayDelay: '0.1s' },
-  { id: 26, xPct: 16, yPct: 78, scale: 1.05, kind: 'red_poppy', swayDelay: '0.2s', slow: true },
-  { id: 27, xPct: 50, yPct: 82, scale: 1.0, kind: 'daisy_cluster', swayDelay: '0.4s' },
-  { id: 28, xPct: 82, yPct: 80, scale: 1.08, kind: 'pink_blossom', swayDelay: '0.8s', slow: true }
+  // 遠景地平線小草點（小比例、高景深）
+  { id: 20, xPct: 14, yPct: 20, scale: 0.34, kind: 'grass', swayDelay: '0s' },
+  { id: 21, xPct: 32, yPct: 21, scale: 0.36, kind: 'daisy_cluster', swayDelay: '0.4s', slow: true },
+  { id: 22, xPct: 68, yPct: 19, scale: 0.35, kind: 'lavender', swayDelay: '0.3s', slow: true },
+  { id: 23, xPct: 86, yPct: 22, scale: 0.38, kind: 'pink_blossom', swayDelay: '0.5s' },
+  // 中景花園草坪花叢（中比例）
+  { id: 24, xPct: 10, yPct: 36, scale: 0.56, kind: 'blue_clover', swayDelay: '0.9s', slow: true },
+  { id: 25, xPct: 28, yPct: 32, scale: 0.52, kind: 'grass', swayDelay: '0.2s' },
+  { id: 26, xPct: 74, yPct: 34, scale: 0.54, kind: 'grass', swayDelay: '0.7s', slow: true },
+  { id: 27, xPct: 90, yPct: 40, scale: 0.6, kind: 'daisy_cluster', swayDelay: '0.1s' },
+  { id: 28, xPct: 16, yPct: 54, scale: 0.72, kind: 'red_poppy', swayDelay: '0.6s' },
+  { id: 29, xPct: 84, yPct: 56, scale: 0.74, kind: 'pink_blossom', swayDelay: '0.3s', slow: true },
+  // 近景立體草簇與野花（大比例營造 3D 近距縱深）
+  { id: 30, xPct: 12, yPct: 76, scale: 1.02, kind: 'red_poppy', swayDelay: '0.2s', slow: true },
+  { id: 31, xPct: 34, yPct: 80, scale: 0.92, kind: 'grass', swayDelay: '0.5s' },
+  { id: 32, xPct: 56, yPct: 84, scale: 0.98, kind: 'daisy_cluster', swayDelay: '0.4s' },
+  { id: 33, xPct: 82, yPct: 78, scale: 1.06, kind: 'pink_blossom', swayDelay: '0.8s', slow: true },
+  { id: 34, xPct: 92, yPct: 90, scale: 1.15, kind: 'grass', swayDelay: '0.1s' }
 ];
 
 const FlowerPatchSvg: React.FC<{ kind: FlowerPatchSpec['kind'] }> = ({ kind }) => {
@@ -127,7 +136,7 @@ export const LushFlowerMeadowBackdrop: React.FC<{
         zIndex: 0
       }}
     >
-      {/* 草原陽光坡地底層漸層與明暗草班 */}
+      {/* 草原陽光坡地底層漸層（garden 模式包含晴朗遠景天際＋遠近漸層綠地） */}
       <div
         style={{
           position: 'absolute',
@@ -135,9 +144,53 @@ export const LushFlowerMeadowBackdrop: React.FC<{
           background:
             variant === 'home'
               ? 'linear-gradient(180deg, rgba(180,215,243,0.92) 0%, rgba(154,210,168,0.88) 7%, #83CB5B 18%, #63BA43 44%, #4CA131 76%, #3E8E27 100%)'
-              : 'linear-gradient(180deg, #4BA134 0%, #5BB842 22%, #6BC84D 54%, #53AD38 82%, #3E8E2A 100%)'
+              : 'linear-gradient(180deg, #93D2FA 0%, #BAE6FD 9%, #B7E4A6 15%, #77CB55 24%, #5EB943 52%, #4BA332 80%, #3A8924 100%)'
         }}
       />
+
+      {/* 口哨花園專屬：遠處柔霧樹林丘陵＋3D 透視草坪紋理與蜿蜒砂土小徑（提供真實遠近地面參考點！） */}
+      {variant === 'garden' && (
+        <>
+          {/* 遠景森林樹冠與緩坡地平線 */}
+          <svg
+            viewBox="0 0 400 90"
+            preserveAspectRatio="none"
+            style={{ position: 'absolute', top: '8%', left: 0, width: '100%', height: '14%', pointerEvents: 'none' }}
+          >
+            <path
+              d="M0 70 Q45 36 95 52 T190 42 T290 50 T400 38 L400 90 L0 90 Z"
+              fill="rgba(74, 165, 76, 0.55)"
+            />
+            <path
+              d="M0 78 C24 58 46 60 66 72 C88 50 116 52 134 72 C158 56 184 58 205 74 C232 48 264 52 284 74 C312 58 344 56 368 72 C384 62 394 64 400 72 L400 90 L0 90 Z"
+              fill="#62BC4B"
+            />
+          </svg>
+
+          {/* 3D 透視草坪斜切明暗光帶 + 彎曲暖米色花園小徑 */}
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+          >
+            <polygon points="0,18 100,18 100,100 0,100" fill="none" />
+            <polygon points="36,18 48,18 22,100 0,100" fill="rgba(255,255,255,0.06)" />
+            <polygon points="56,18 68,18 96,100 72,100" fill="rgba(255,255,255,0.05)" />
+            {/* 遠小近寬的蜿蜒砂土小徑，立刻呈現地面 3D 縱深 */}
+            <path
+              d="M 55 18 C 52 34 38 46 44 64 C 49 78 62 90 56 100 L 42 100 C 37 88 26 76 28 60 C 30 44 47 32 51 18 Z"
+              fill="rgba(235, 225, 192, 0.42)"
+            />
+            <path
+              d="M 54 18 C 51 34 36 46 42 64 C 46 78 58 90 52 100 L 46 100 C 42 89 31 77 33 61 C 35 45 49 32 52 18 Z"
+              fill="rgba(247, 240, 218, 0.36)"
+            />
+            <ellipse cx="42" cy="52" rx="1.6" ry="0.7" fill="rgba(180,165,130,0.45)" />
+            <ellipse cx="48" cy="70" rx="2.1" ry="0.9" fill="rgba(180,165,130,0.48)" />
+            <ellipse cx="38" cy="64" rx="1.4" ry="0.6" fill="rgba(160,145,110,0.42)" />
+          </svg>
+        </>
+      )}
 
       {/* 有機立體日照光斑（營造皮克敏繁花草地立體起伏感） */}
       <div

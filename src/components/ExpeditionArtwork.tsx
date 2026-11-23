@@ -10,62 +10,100 @@ import {
 import { getCreatureHeartSummary } from '../services/expeditionService';
 
 /**
- * 繪製可愛 3D 盆栽瓜糰（對照皮克敏圖一白色花苗圓甕造形＋顏色紋樣與嫩芽）
+ * 繪製可愛 3D 盆栽瓜糰：
+ * - 七種一般色苗各自呈現對應釉色盆栽
+ * - 萬步「大瓜糰」為更大尺寸米金彩繪寬口甕，無法事先預知顏色（對照圖二）
  */
 export const ExpeditionSeedlingPotSvg: React.FC<{
   variety?: DeGuaVariety;
   isHuge?: boolean;
   size?: number;
 }> = ({ variety = 'white', isHuge = false, size = 84 }) => {
-  const accentHex = isHuge ? '#F59E0B' : VARIETY_CATALOG[variety].potColor;
-  const potBodyTop = isHuge ? '#FEF3C7' : '#F8FAFC';
-  const potBodyBot = isHuge ? '#FDE68A' : '#E2E8F0';
-  const zigzagColor =
-    variety === 'white'
-      ? '#EF4444'
-      : isHuge
-        ? '#D97706'
-        : accentHex;
+  const uid = React.useId().replace(/:/g, '');
+  const potPalettes: Record<DeGuaVariety, { top: string; mid: string; rim: string; pattern: string }> = {
+    red: { top: '#FCA5A5', mid: '#EF4444', rim: '#B91C1C', pattern: '#FEE2E2' },
+    yellow: { top: '#FEF08A', mid: '#FACC15', rim: '#CA8A04', pattern: '#92400E' },
+    blue: { top: '#93C5FD', mid: '#2563EB', rim: '#1E40AF', pattern: '#DBEAFE' },
+    purple: { top: '#D8B4FE', mid: '#9333EA', rim: '#6B21A8', pattern: '#F3E8FF' },
+    white: { top: '#FFFFFF', mid: '#E2E8F0', rim: '#CBD5E1', pattern: '#EF4444' },
+    winged: { top: '#FBCFE8', mid: '#F472B6', rim: '#BE185D', pattern: '#FFF1F2' },
+    rock: { top: '#9CA3AF', mid: '#4B5563', rim: '#1F2937', pattern: '#E5E7EB' }
+  };
+  const pal = potPalettes[variety] || potPalettes.white;
+  const displaySize = isHuge ? Math.round(size * 1.14) : size;
 
   return (
     <svg
-      width={size}
-      height={size}
+      width={displaySize}
+      height={displaySize}
       viewBox="0 0 88 92"
       style={{ overflow: 'visible', filter: 'drop-shadow(0 8px 10px rgba(0,0,0,0.16))' }}
     >
       <defs>
-        <radialGradient id={`potBody_${variety}_${isHuge ? 'h' : 'n'}`} cx="38%" cy="35%" r="68%">
-          <stop offset="0%" stopColor={potBodyTop} />
-          <stop offset="72%" stopColor={potBodyBot} />
-          <stop offset="100%" stopColor={isHuge ? '#F59E0B' : '#CBD5E1'} />
+        <radialGradient id={`potBody_${uid}`} cx="36%" cy="32%" r="70%">
+          <stop offset="0%" stopColor={isHuge ? '#FFFDF5' : pal.top} />
+          <stop offset="68%" stopColor={isHuge ? '#F5E7C6' : pal.mid} />
+          <stop offset="100%" stopColor={isHuge ? '#D4B982' : pal.rim} />
         </radialGradient>
       </defs>
 
-      <ellipse cx="44" cy="84" rx="21" ry="5.5" fill="rgba(15,23,42,0.16)" />
+      <ellipse cx="44" cy="84" rx={isHuge ? 25 : 21} ry="5.5" fill="rgba(15,23,42,0.18)" />
 
-      {/* 圓甕本體 */}
+      {/* 圓甕本體（大瓜糰更寬厚飽滿） */}
       <path
-        d="M 22 44 C 14 54 16 74 30 80 L 58 80 C 72 74 74 54 66 44 Z"
-        fill={`url(#potBody_${variety}_${isHuge ? 'h' : 'n'})`}
-        stroke={isHuge ? '#B45309' : '#CBD5E1'}
+        d={
+          isHuge
+            ? 'M 17 43 C 8 54 11 76 28 82 L 60 82 C 77 76 80 54 71 43 Z'
+            : 'M 22 44 C 14 54 16 74 30 80 L 58 80 C 72 74 74 54 66 44 Z'
+        }
+        fill={`url(#potBody_${uid})`}
+        stroke={isHuge ? '#C29D59' : pal.rim}
         strokeWidth="1.4"
       />
 
-      {/* 甕身彩色鋸齒/色帶紋樣（對照圖一盆栽紋飾） */}
-      <path
-        d="M 21 53 L 28 62 L 36 53 L 44 62 L 52 53 L 60 62 L 67 53"
-        fill="none"
-        stroke={zigzagColor}
-        strokeWidth="3.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      {/* 盆身彩繪鋸齒／民族紋樣 */}
+      {isHuge ? (
+        <>
+          <path
+            d="M 16 55 L 25 65 L 35 54 L 44 65 L 53 54 L 63 65 L 72 55"
+            fill="none"
+            stroke="#5EEAD4"
+            strokeWidth="3.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M 20 69 L 29 75 L 44 69 L 59 75 L 68 69"
+            fill="none"
+            stroke="#FB7185"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      ) : (
+        <path
+          d="M 21 53 L 28 62 L 36 53 L 44 62 L 52 53 L 60 62 L 67 53"
+          fill="none"
+          stroke={pal.pattern}
+          strokeWidth="3.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
 
       {/* 甕口與土面 */}
-      <ellipse cx="44" cy="43" rx="22" ry="8" fill="#D97706" stroke="#B45309" strokeWidth="1.2" />
-      <ellipse cx="44" cy="43" rx="18.5" ry="6" fill="#78350F" />
-      <ellipse cx="44" cy="44" rx="14" ry="3.5" fill="#451A03" opacity="0.65" />
+      <ellipse
+        cx="44"
+        cy="43"
+        rx={isHuge ? 27 : 22}
+        ry={isHuge ? 9 : 8}
+        fill={isHuge ? '#E5C997' : '#D97706'}
+        stroke={isHuge ? '#B68F4C' : '#B45309'}
+        strokeWidth="1.2"
+      />
+      <ellipse cx="44" cy="43" rx={isHuge ? 22.5 : 18.5} ry="6" fill="#78350F" />
+      <ellipse cx="44" cy="44" rx={isHuge ? 17 : 14} ry="3.5" fill="#451A03" opacity="0.65" />
 
       {/* 綠色嫩芽 */}
       <path
@@ -83,11 +121,11 @@ export const ExpeditionSeedlingPotSvg: React.FC<{
       />
       <path d="M 49 21 C 55 17 61 14 66 12" stroke="#BEF264" strokeWidth="1.1" fill="none" />
 
-      {/* 巨大瓜糰金星光點 */}
+      {/* 大瓜糰閃亮星光 */}
       {isHuge && (
         <>
-          <circle cx="26" cy="36" r="2.6" fill="#FDE047" />
-          <circle cx="64" cy="34" r="2.2" fill="#FDE047" />
+          <circle cx="20" cy="34" r="2.8" fill="#FDE047" />
+          <circle cx="68" cy="32" r="2.4" fill="#FDE047" />
         </>
       )}
     </svg>

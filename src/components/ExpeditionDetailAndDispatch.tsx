@@ -8,7 +8,6 @@ import {
   DeGuaVariety,
   ExpeditionItem,
   MushroomNode,
-  PETAL_META,
   PetalColor,
   PlantedFlowerCell,
   VARIETY_CATALOG
@@ -37,7 +36,6 @@ import {
   normalizeExpeditionItem
 } from '../services/expeditionService';
 import { DeGuaCharacter } from './DeGuaCharacter';
-import { LushFlowerMeadowBackdrop } from './LushFlowerMeadowBackdrop';
 import { buildDirectionalWalkingPlayerSvg } from './WalkingPlayerAvatar';
 import { FlowerMap } from './FlowerMap';
 import {
@@ -247,6 +245,11 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
     [expedition, myLat, myLng, nowMs]
   );
 
+  const followStartSnap = useMemo(
+    () => getExpeditionProgressSnapshot(expedition, myLat, myLng, Date.now()),
+    [phase === 'follow_crew', expedition.id]
+  );
+
   const maxCarriers = expedition.maxCarriers ?? (expedition.kind === 'gift' ? 1 : 6);
 
   // 初始化上方定位地圖（Step 2 & Step 6A）
@@ -446,14 +449,15 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
           onPerspectiveChange={setFollowPerspective}
           allowPinchPerspectiveSwitch={true}
           followCrewMode={true}
+          followExpedition={expedition}
           followPayload={{
             kind: expedition.kind,
             variety: expedition.seedlingVariety,
             fruitEmoji: expedition.fruitEmoji,
             phase: activeSnap.phase
           }}
-          myLat={activeSnap.currentLat}
-          myLng={activeSnap.currentLng}
+          myLat={followStartSnap.currentLat}
+          myLng={followStartSnap.currentLng}
           isPlanting={isPlanting}
           activePetalColor={activePetalColor}
           squad={activeAssignedCreatures}
@@ -586,10 +590,22 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
     );
   }
 
-  // ==================== Step 5：按下 GO 後的第一人稱／背後目送小隊出發動畫（對照圖 8） ====================
+  // ==================== Step 5：按下 GO 後在實景 3D 散步風景中背後目送整群小隊跑向遠方（對照圖 8，無說明文字框） ====================
   if (phase === 'farewell') {
     const walkerBackHtml = buildDirectionalWalkingPlayerSvg(0, 88, 128);
-    const totalEstParts = formatExpeditionDurationParts(liveEstimate.totalMs);
+    const angleRad = Math.atan2(expedition.lng - myLng, expedition.lat - myLat);
+    const farewellBearing = ((-angleRad * 180) / Math.PI + 360) % 360;
+    const flockSlots = [
+      { dx: -44, dy: -8, delay: 0.0 },
+      { dx: 12, dy: -22, delay: 0.08 },
+      { dx: -18, dy: 14, delay: 0.14 },
+      { dx: 38, dy: 6, delay: 0.05 },
+      { dx: -64, dy: 18, delay: 0.18 },
+      { dx: 58, dy: 24, delay: 0.11 },
+      { dx: -4, dy: -36, delay: 0.22 },
+      { dx: 26, dy: 30, delay: 0.16 }
+    ];
+
     return (
       <div
         onClick={onClose}
@@ -598,89 +614,81 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
           inset: 0,
           zIndex: 1320,
           overflow: 'hidden',
-          background: 'linear-gradient(180deg, #60A5FA 0%, #BAE6FD 40%, #86EFAC 56%, #4ADE80 100%)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center'
+          background: '#62B656'
         }}
       >
-        <LushFlowerMeadowBackdrop variant="garden" animateBurst={true} />
+        {/* 背景直接使用 3D 散步實景街道視角，無頂端多餘文字彈框 */}
+        <FlowerMap
+          mode="interactive"
+          cameraPerspective="surround"
+          cameraBearing={farewellBearing}
+          hidePlayerAvatar={true}
+          myLat={myLat}
+          myLng={myLng}
+          isPlanting={isPlanting}
+          activePetalColor={activePetalColor}
+          squad={[]}
+          flowers={flowers}
+          worldDelta={worldDelta}
+          bigFlowers={bigFlowers}
+          mushrooms={mushrooms}
+          activeExpeditions={[]}
+        />
 
-        {/* 頂端光束與星芒裝飾 */}
+        {/* 一群 3D 透視地瓜球小隊由前景錯落簇擁向前方地平線遠奔（非排成橫線！） */}
         <div
           style={{
             position: 'absolute',
-            top: 'var(--top-safe-hud)',
-            left: 16,
-            right: 16,
-            zIndex: 25,
-            display: 'flex',
-            justifyContent: 'center'
+            left: '54%',
+            bottom: '28%',
+            width: 180,
+            height: 220,
+            transform: 'translateX(-50%)',
+            zIndex: 440,
+            pointerEvents: 'none'
           }}
         >
-          <div
-            style={{
-              background: 'rgba(255,255,255,0.92)',
-              backdropFilter: 'blur(8px)',
-              borderRadius: 18,
-              padding: '10px 18px',
-              boxShadow: '0 8px 24px rgba(15,23,42,0.16)',
-              textAlign: 'center'
-            }}
-          >
-            <div style={{ fontSize: 15, fontWeight: 900, color: '#0F172A' }}>
-              🚀 派出了 {selectedCreatures.length} 隻地瓜球前往探險！
-            </div>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#059669', marginTop: 2 }}>
-              目的地：{expedition.placeName}・預計 {totalEstParts.compactText} 回來
-            </div>
-          </div>
+          {selectedCreatures.slice(0, 10).map((c, idx) => {
+            const s = flockSlots[idx % flockSlots.length];
+            const ringScale = 1 + Math.floor(idx / flockSlots.length) * 0.12;
+            const spreadX = Math.round(s.dx * ringScale);
+            const spreadY = Math.round(s.dy * ringScale);
+            return (
+              <div
+                key={c.id}
+                style={{
+                  position: 'absolute',
+                  left: `calc(50% + ${spreadX}px)`,
+                  bottom: `${Math.max(0, 24 - spreadY)}px`,
+                  transform: 'translate(-50%, 0)',
+                  animation: `expRunAway3D 2.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${s.delay}s forwards`,
+                  zIndex: 20 + Math.round(-spreadY)
+                }}
+              >
+                <div className="degua-bounce" style={{ animationDelay: `${idx * 0.11}s` }}>
+                  <DeGuaCharacter
+                    variety={c.variety}
+                    decor={c.decor}
+                    leafStage={c.leafStage}
+                    flowerColor={c.flowerColor}
+                    showDecor={c.hasDecor}
+                    size={54}
+                    isBouncing={true}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* 遠方出發中朝地平線奔跑的小隊 */}
+        {/* 前景左下方背對鏡頭的玩家目送小隊 */}
         <div
           style={{
             position: 'absolute',
-            top: '48%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 18,
-            display: 'flex',
-            gap: 6,
-            alignItems: 'flex-end'
-          }}
-        >
-          {selectedCreatures.slice(0, 6).map((c, idx) => (
-            <div
-              key={c.id}
-              className="degua-bounce"
-              style={{
-                animationDelay: `${idx * 0.12}s`,
-                transform: 'scale(0.72)'
-              }}
-            >
-              <DeGuaCharacter
-                variety={c.variety}
-                decor={c.decor}
-                leafStage={c.leafStage}
-                flowerColor={c.flowerColor}
-                showDecor={c.hasDecor}
-                size={48}
-                isBouncing={true}
-              />
-            </div>
-          ))}
-        </div>
-
-        {/* 左下方第一人稱／過肩視角背影玩家目送小隊 */}
-        <div
-          style={{
-            position: 'absolute',
-            left: '26%',
-            bottom: '16%',
-            transform: 'translateX(-50%) scale(1.25)',
-            zIndex: 22,
+            left: '28%',
+            bottom: '13%',
+            transform: 'translateX(-50%) scale(1.38)',
+            zIndex: 450,
             pointerEvents: 'none'
           }}
           dangerouslySetInnerHTML={{ __html: walkerBackHtml }}
@@ -697,7 +705,7 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
             position: 'absolute',
             left: 'clamp(14px, 4vw, 18px)',
             bottom: 'max(2.1lvh, env(safe-area-inset-bottom) + 6px)',
-            zIndex: 35,
+            zIndex: 480,
             width: 'clamp(48px, 6.2lvh, 56px)',
             height: 'clamp(48px, 6.2lvh, 56px)'
           }}
@@ -707,6 +715,23 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
             <path d="M5.5 5.5L18.5 18.5M18.5 5.5L5.5 18.5" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
           </svg>
         </button>
+
+        <style>{`
+          @keyframes expRunAway3D {
+            0% {
+              transform: translate(-50%, 0px) scale(1.05);
+              opacity: 1;
+            }
+            65% {
+              transform: translate(-50%, -155px) scale(0.54);
+              opacity: 0.96;
+            }
+            100% {
+              transform: translate(-50%, -250px) scale(0.28);
+              opacity: 0;
+            }
+          }
+        `}</style>
       </div>
     );
   }
@@ -1437,22 +1462,16 @@ export const ExpeditionDetailAndDispatch: React.FC<ExpeditionDetailAndDispatchPr
                 </span>
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 900 }}>
-                  {expedition.kind === 'fruit' ? (
-                    <span style={{ color: '#059669' }}>
-                      {PETAL_META[expedition.nectarColor || 'white'].nectarName}果實（約 {expedition.nectarAmount} 滴）
+                {expedition.kind !== 'fruit' && (
+                  <div style={{ fontSize: 13.5, fontWeight: 900, marginBottom: 2 }}>
+                    <span style={{ color: '#DC2626' }}>{decorMeta?.placeCategory || '路邊'}</span>
+                    <span style={{ color: '#94A3B8', margin: '0 5px' }}>/</span>
+                    <span style={{ color: '#84A341' }}>
+                      {decorSubsets[0]?.setName || decorMeta?.name || '飾品'}
                     </span>
-                  ) : (
-                    <>
-                      <span style={{ color: '#DC2626' }}>{decorMeta?.placeCategory || '路邊'}</span>
-                      <span style={{ color: '#94A3B8', margin: '0 5px' }}>/</span>
-                      <span style={{ color: '#84A341' }}>
-                        {decorSubsets[0]?.setName || decorMeta?.name || '飾品'}
-                      </span>
-                    </>
-                  )}
-                </div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#334155', marginTop: 2 }}>
+                  </div>
+                )}
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#334155' }}>
                   距離：{expedition.distanceMeters.toLocaleString()}m，{expedition.placeName}
                 </div>
               </div>
